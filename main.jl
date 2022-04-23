@@ -111,38 +111,6 @@ function Base.display(universe::Universe, zorder::Int64)
 end
 
 
-using Printf
-function EmojiDisplay(universe::Universe, zorder::Int64)
-    map2D = universe.map[:,:,zorder]
-    for i=1:universe.mapsize[1]
-        for j=1:universe.mapsize[2]
-            if isodd(zorder)
-                if isodd(i) && isodd(j)
-                    if map2D[i,j] == 0
-                        @printf "%-1.1s" "⭕️"
-                    else
-                        @printf "%-1.1s" "🚀"
-                    end
-                else
-                    @printf "%-1.1s" "❌"
-                end
-            else 
-                if iseven(i) && iseven(j)
-                    if map2D[i,j] == 0
-                        @printf "%-1.1s" "⭕️"
-                    else
-                        @printf "%-1.1s" "🚀"
-                    end
-                else
-                    @printf "%-1.1s" "❌"
-                end
-            end
-        end
-        println()
-    end
-end
-
-
 
 function RefreshFile(filename::String)
     file = open(filename, "w")
