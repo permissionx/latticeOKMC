@@ -29,50 +29,47 @@ mutable struct Universe
     pointNum::UInt32
     defects::Vector{Defect}
     defectNum::UInt32
+    nstep::Int64
     function Universe(mapsize::Vector{Int64})
         map = zeros(UInt32, mapsize[1], mapsize[2], mapsize[3]) # N x half a lattice constant
         points = Point[]
         defects = Defect[]
-        new(mapsize, map, points, UInt32(0), defects, UInt32(0))
+        new(mapsize, map, points, UInt32(0), defects, UInt32(0),0)
     end
 end
 
-
-function FeindNeighbors!(universe, point)
-    neighbors = Point[]
-    for x in [-1,1]
-        for y in [-1,1]
-            for z in [-1,1]
-                neighbor = universe.points[universe.map[x,y,z]]
-                push!(neighbors, neighbor)
-            end
-        end
-    end
-end
-
+function Dump(universe::Universe, filename::String, mode::String)
+    
 
 function Base.push!(universe::Universe, point::Point)
     @assert(universe.map[point.coord[1], point.coord[2], point.coord[3]] == 0, "points overlap!")
-    map.content[point.coord[1], point.coord[2], point.coord[3]] = point.index
     universe.pointNum += 1
     index = universe.pointNum 
-    point.index = index
+    SetIndex(universe, point, index)
     push!(universe.points, point)
-    FindNeighbor!(universe, point)
 end
 
 
-function Base.delete!(map::Map, point::Point)
-    @assert(universe.map[point.coord[1], point.coord[2], point.coord[3]])
+function SetIndex(universe::Univeres, point::Point, index::UInt32)
+    point.index = UInt32
+    universe.map[point.coord[1], point.coord[2], point.coord[3]] = index
+end
 
 
 function Base.delete!(universe::Universe, point::Point)
     universe.pointNum -= 1
     deleteat!(universe.points, point.index)
     for point in universe.points[point.index+1, end]
-        point.index -= 1
+        SetIndex(universe, point, point.index - 1)
     end
-    delete!(univeres.map, point)
+end
+
+
+function Displace!(universe::Universe, point::Point, newCoord::vector{Int64})
+    universe.map[point.coord[1], point.coord[2], point[3]] = UInt32(0)
+    point.coord = newCoord
+    universe.map[newCoord[1], newCoord[2], newCoord[3]] = point.index
 end
 
 universe = Universe(10)
+
