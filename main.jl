@@ -11,6 +11,22 @@ mutable struct Point
     end
 end
 
+const pointTypeNames = ["SIA", "Vac"]
+function Base.display(point::Point)
+    print("$(point.id) $(point.index) $(pointTypeNames[point.type]) \
+          ($(point.coord[1]) $(point.coord[2]) $(point.coord[3]))")
+end
+
+function Base.display(points::Vector{Point})
+    println("$(length(points))-point universe:")
+    println("id index type (x y z)")
+    for point in points
+        display(point)
+        println()
+    end
+end
+
+
 
 mutable struct Defect
     index::UInt32
@@ -59,6 +75,73 @@ function Dump(universe::Universe, filename::String, mode::String)
     close(file)
 end
 
+using Crayons
+function Base.display(universe::Universe, zorder::Int64)
+    map2D = universe.map[:,:,zorder]
+    for i=1:universe.mapsize[1]
+        for j=1:universe.mapsize[2]
+            if isodd(zorder)
+                if isodd(i) && isodd(j)
+                    if map2D[i,j] > 0
+                        color = :light_red
+                    else
+                        color = :default
+                    end
+                    print(Crayon(foreground=color, bold=true), map2D[i,j], " ")
+                else
+                    print(Crayon(foreground=(105,105,105), bold=true),"X ")
+                end
+            else 
+                if iseven(i) && iseven(j)
+                    if map2D[i,j] > 0
+                        color = :light_red
+                    else
+                        color = :default
+                    end
+                    print(Crayon(foreground=color, bold=true), map2D[i,j], " ")
+                else
+                    print(Crayon(foreground=(105,105,105), bold=true),"X ")
+                end
+            end
+        end
+        println()
+    end
+end
+
+
+using Printf
+function EmojiDisplay(universe::Universe, zorder::Int64)
+    map2D = universe.map[:,:,zorder]
+    for i=1:universe.mapsize[1]
+        for j=1:universe.mapsize[2]
+            if isodd(zorder)
+                if isodd(i) && isodd(j)
+                    if map2D[i,j] == 0
+                        @printf "%-1.1s" "⭕️"
+                    else
+                        @printf "%-1.1s" "🚀"
+                    end
+                else
+                    @printf "%-1.1s" "❌"
+                end
+            else 
+                if iseven(i) && iseven(j)
+                    if map2D[i,j] == 0
+                        @printf "%-1.1s" "⭕️"
+                    else
+                        @printf "%-1.1s" "🚀"
+                    end
+                else
+                    @printf "%-1.1s" "❌"
+                end
+            end
+        end
+        println()
+    end
+end
+
+
+
 function RefreshFile(filename::String)
     file = open(filename, "w")
     close(file)
@@ -67,11 +150,12 @@ end
 
 function Base.push!(universe::Universe, point::Point)
     @assert(universe.map[point.coord[1], point.coord[2], point.coord[3]] == 0, "points overlap!")
-    PushBasic(universe, point)
-    PushMap(universe, point)
+    PushBasic!(universe, point)
+    PushMap!(universe, point)
+    PushNeighbors!(universe, point)
 end
 
-function PushBasic(universe::Universe, point::Point)
+function PushBasic!(universe::Universe, point::Point)
     universe.pointNum += 1
     universe.maxID += 1
     point.index = universe.pointNum
@@ -79,55 +163,79 @@ function PushBasic(universe::Universe, point::Point)
     push!(universe.points, point)
 end
 
-function PushMap(universe::Universe, point::Point)
-    universe.map[point.coord[1], point.coord[2], point.coord[3]] = index
+function PushMap!(universe::Universe, point::Point)
+    universe.map[point.coord[1], point.coord[2], point.coord[3]] = point.index
 end
 
-
+function PushNeighbors!(universe::Universe, point::Point)
+    for i in [-1,1]
+        for j in [-1,1]
+            for k in [-1,1]
+                coord = point.coord + [i,j,k]
+                try
+                    if universe.map[coord[1], coord[2], coord[3]] > 0
+                        neighbor = universe.points[universe.map[coord[1], coord[2], coord[3]]]
+                        push!(point.neighbors, neighbor)
+                        push!(neighbor.neighbors, point)
+                    end
+                catch BoundsError
+                    continue
+                end
+            end
+        end
+    end
+end
 
 function Base.delete!(universe::Universe, point::Point)
-    DeleteBasic(universe, point)
-    DeleteMap(universe, point)
+    DeleteNeighbors(universe, point)
+    DeleteBasic!(universe, point)
+    DeleteMap!(universe, point)
 end
 
-function DeleteBasic(universe::Universe, point::Point)
+function DeleteBasic!(universe::Universe, point::Point)
     universe.pointNum -= 1
     deleteat!(universe.points, point.index)
-    for point in universe.points[point.index+1, end]
+    for point in universe.points[point.index:end]
         point.index -= 1
     end
 end
 
-function DeleteMap(universe::Universe, point::Point)
+function DeleteMap!(universe::Universe, point::Point)
     @assert(universe.map[point.coord[1], point.coord[2], point.coord[3]] > 0, "point not in map!")
     universe.map[point.coord[1], point.coord[2], point.coord[3]] = 0
-    for p in universe.points[point.index+1, end]
+    for p in universe.points[point.index:end]
         universe.map[p.coord[1], p.coord[2], p.coord[3]] -= 1
+    end
+end
+
+function DeleteNeighbors(universe::Universe, point::Point)
+    for neighbor in point.neighbors
+        deleteat!(neighbor.neighbors, findfirst(p->p.id==point.id,neighbor.neighbors))
     end
 end
 
 
 function Displace!(universe::Universe, point::Point, newCoord::Vector{Int64})
+    @assert(universe.map[point.coord[1], point.coord[2], point.coord[3]] > 0, "point not in map!")
     @assert(universe.map[newCoord[1], newCoord[2], newCoord[3]] == 0, "points overlap!")
-    DisplaceBasic(universe, point, newCoord)
+    DisplaceBasic!(universe, point, newCoord)
 end
 
-function DisplaceBasic(universe::Universe, point::Point, newCoord::Vector{Int64})
-    universe.map[point.coord[1], point.coord[2], point[3]] = UInt32(0)
+function DisplaceBasic!(universe::Universe, point::Point, newCoord::Vector{Int64})
+    universe.map[point.coord[1], point.coord[2], point.coord[3]] = UInt32(0)
     point.coord = newCoord
     universe.map[newCoord[1], newCoord[2], newCoord[3]] = point.index
 end
 
 
 universe = Universe([10,10,10])
-point1 = Point(UInt8(1), [1,1,1])
-point2 = Point(UInt8(1), [2,2,2])
+point1 = Point(UInt8(1), [3,3,3])
+point2 = Point(UInt8(1), [4,4,4])
+point3 = Point(UInt8(1), [2,2,2])
 
 filename = "/mnt/c/Users/buaax/Desktop/test.dump"
 RefreshFile(filename)
 push!(universe, point1)
-universe.nstep += 1
-Dump(universe, filename, "a")
 push!(universe, point2)
-universe.nstep += 1
+push!(universe, point3)
 Dump(universe, filename, "a")
