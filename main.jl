@@ -41,28 +41,25 @@ end
 # dump the map in lammps dump format
 function Dump(universe::Universe, filename::String, mode::String)
     file = open(filename, mode)
-    file.write("ITEM: TIMESTEP\n")
-    file.write(universe.nstep)
-    file.write("\nITEM: NUMBER OF ATOMS\n")
-    file.write(universe.pointNum)
-    file.write("\nITEM: BOX BOUNDS pp pp pp\n")
-    file.write("0 $(universe.mapsize[1])\n")
-    file.write("0 $(universe.mapsize[2])\n")
-    file.write("0 $(universe.mapsize[3])\n")
-    file.write("\nITEM: ATOMS id type x y z\n")
+    write(file, "ITEM: TIMESTEP\n")
+    write(file, "$(universe.nstep)\n")
+    write(file, "ITEM: NUMBER OF ATOMS\n")
+    write(file, "$(universe.pointNum)\n")
+    write(file, "ITEM: BOX BOUNDS pp pp pp\n")
+    write(file, "1 $(universe.mapsize[1])\n")
+    write(file, "1 $(universe.mapsize[2])\n")
+    write(file, "1 $(universe.mapsize[3])\n")
+    write(file, "ITEM: ATOMS id type x y z\n")
     for i=1:universe.pointNum
-        file.write(i)
-        file.write(" ")
-        file.write(universe.points[i].type)
-        file.write(" ")
-        file.write(universe.points[i].coord[1])
-        file.write(" ")
-        file.write(universe.points[i].coord[2])
-        file.write(" ")
-        file.write(universe.points[i].coord[3])
-        file.write("\n")
+        point = universe.points[i]
+        write(file, "$(point.index) $(point.type) $(point.coord[1]) $(point.coord[2]) $(point.coord[3])\n")
     end
-    file.close()
+    close(file)
+end
+
+function RefreshFile(filename::String)
+    file = open(filename, "w")
+    close(file)
 end
 
 
@@ -75,8 +72,8 @@ function Base.push!(universe::Universe, point::Point)
 end
 
 
-function SetIndex(universe::Univeres, point::Point, index::UInt32)
-    point.index = UInt32
+function SetIndex(universe::Universe, point::Point, index::UInt32)
+    point.index = index
     universe.map[point.coord[1], point.coord[2], point.coord[3]] = index
 end
 
@@ -90,11 +87,22 @@ function Base.delete!(universe::Universe, point::Point)
 end
 
 
-function Displace!(universe::Universe, point::Point, newCoord::vector{Int64})
+function Displace!(universe::Universe, point::Point, newCoord::Vector{Int64})
     universe.map[point.coord[1], point.coord[2], point[3]] = UInt32(0)
     point.coord = newCoord
     universe.map[newCoord[1], newCoord[2], newCoord[3]] = point.index
 end
 
-universe = Universe(10)
 
+universe = Universe([10,10,10])
+point1 = Point(UInt8(1), [1,1,1])
+point2 = Point(UInt8(1), [2,2,2])
+
+filename = "/mnt/c/Users/XUKE/Desktop/test.dump"
+RefreshFile(filename)
+push!(universe, point1)
+universe.nstep += 1
+Dump(universe, filename, "a")
+push!(universe, point2)
+universe.nstep += 1
+Dump(universe, filename, "a")
