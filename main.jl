@@ -78,29 +78,31 @@ end
 using Crayons
 function Base.display(universe::Universe, zorder::Int64)
     map2D = universe.map[:,:,zorder]
+    print("  ")
     for i=1:universe.mapsize[1]
+        print(" $(i%10)")
+    end
+    println()
+    for i=1:universe.mapsize[1]
+        print(" $(i%10)")
         for j=1:universe.mapsize[2]
             if isodd(zorder)
                 if isodd(i) && isodd(j)
-                    if map2D[i,j] > 0
-                        color = :light_red
-                    else
-                        color = :default
-                    end
-                    print(Crayon(foreground=color, bold=true), map2D[i,j], " ")
+                    c = map2D[i,j] > 0 ? "$(map2D[i,j])" : " "
+                    print(Crayon(background=:dark_gray, foreground=:white, bold=true), " ", c)
+                    print(Crayon(reset=true),"")
                 else
-                    print(Crayon(foreground=(105,105,105), bold=true),"X ")
+                    print(Crayon(background=:default, bold=true),"  ")
+                    print(Crayon(reset=true),"")
                 end
             else 
                 if iseven(i) && iseven(j)
-                    if map2D[i,j] > 0
-                        color = :light_red
-                    else
-                        color = :default
-                    end
-                    print(Crayon(foreground=color, bold=true), map2D[i,j], " ")
+                    c = map2D[i,j] > 0 ? "$(map2D[i,j])" : " "
+                    print(Crayon(background=:dark_gray, foreground=:white, bold=true), " ", c)
+                    print(Crayon(reset=true),"")
                 else
-                    print(Crayon(foreground=(105,105,105), bold=true),"X ")
+                    print(Crayon(background=:default, bold=true),"  ")
+                    print(Crayon(reset=true),"")
                 end
             end
         end
