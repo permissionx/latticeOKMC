@@ -38,8 +38,33 @@ mutable struct Universe
     end
 end
 
+# dump the map in lammps dump format
 function Dump(universe::Universe, filename::String, mode::String)
-    
+    file = open(filename, mode)
+    file.write("ITEM: TIMESTEP\n")
+    file.write(universe.nstep)
+    file.write("\nITEM: NUMBER OF ATOMS\n")
+    file.write(universe.pointNum)
+    file.write("\nITEM: BOX BOUNDS pp pp pp\n")
+    file.write("0 $(universe.mapsize[1])\n")
+    file.write("0 $(universe.mapsize[2])\n")
+    file.write("0 $(universe.mapsize[3])\n")
+    file.write("\nITEM: ATOMS id type x y z\n")
+    for i=1:universe.pointNum
+        file.write(i)
+        file.write(" ")
+        file.write(universe.points[i].type)
+        file.write(" ")
+        file.write(universe.points[i].coord[1])
+        file.write(" ")
+        file.write(universe.points[i].coord[2])
+        file.write(" ")
+        file.write(universe.points[i].coord[3])
+        file.write("\n")
+    end
+    file.close()
+end
+
 
 function Base.push!(universe::Universe, point::Point)
     @assert(universe.map[point.coord[1], point.coord[2], point.coord[3]] == 0, "points overlap!")
