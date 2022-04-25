@@ -1,13 +1,24 @@
+using StatsBase
+using Crayons
+
+const directionDir = Int64[[1,1,1],
+                      [1,1,-1],
+                      [1,-1,1],
+                      [1,-1,-1],
+                      [0,0,0]]
 mutable struct Point 
     id::Int64
     index::UInt32
     type::UInt8
     coord::Vector{Int64}
     neighbors::Vector{Point}
-    function Point(type::UInt8, coord::Vector{Int64})
+    directionIndex::Vector{Int64}
+    defectIndex::Int64
+    function Point(type::UInt8, coord::Vector{Int64}, directionIndex::Vector{Int64})
         @assert(type==1 || type==2, "Bad point type")
+        @assert((type==2 && directionIndex==5) || type==1 && directionIndex<5, "Bad direction index")
         neighbors = Point[]
-        new(0, UInt32(0), type, coord, neighbors)
+        new(0, UInt32(0), type, coord, neighbors, directionIndex, 0)
     end
 end
 
@@ -27,12 +38,11 @@ function Base.display(points::Vector{Point})
 end
 
 
-
 mutable struct Defect
     index::UInt32
     type::UInt8
     points::Vector{Point}
-    direction::Vector{Int64}
+    directionIndex::Vector{Int64}
     function Defect()
         points = Point[]
         new(UInt32(0), UInt8(0), points, [0,0,0])
@@ -56,6 +66,7 @@ mutable struct Universe
     end
 end
 
+
 # dump the map in lammps dump format
 function Dump(universe::Universe, filename::String, mode::String)
     file = open(filename, mode)
@@ -75,7 +86,7 @@ function Dump(universe::Universe, filename::String, mode::String)
     close(file)
 end
 
-using Crayons
+
 function Base.display(universe::Universe, zorder::Int64)
     map2D = universe.map[:,:,zorder]
     print("  ")
@@ -111,7 +122,6 @@ function Base.display(universe::Universe, zorder::Int64)
 end
 
 
-
 function RefreshFile(filename::String)
     file = open(filename, "w")
     close(file)
@@ -123,6 +133,7 @@ function Base.push!(universe::Universe, point::Point)
     PushBasic!(universe, point)
     PushMap!(universe, point)
     PushNeighbors!(universe, point)
+    PushSVReact!(universe, point)
 end
 
 function PushBasic!(universe::Universe, point::Point)
@@ -156,6 +167,106 @@ function PushNeighbors!(universe::Universe, point::Point)
     end
 end
 
+
+function PushSVReact!(universe::Universe, point::Point)
+    reversePoints = Point[]
+    for neighbor in point.neighbors
+        if neighbor.type != point.type
+            push!(reversePoints, neighbor)
+        end
+    end
+    if !isempty(reversePoints)
+        neighbor = sample(reversePoints)
+        delete!(universe, neighbor)
+        delete!(universe, point)
+    end
+end
+
+
+function PushDefect!(universe::Universe, point::Point)  #Defecting after a push
+    if point.type == 0 || (point.type == 1 && isempty(point.neighbors))
+        defect = Defect()
+        defect.points = [point]
+        defect.directionIndex = point.directionIndex
+        defect.type = point.type
+        push!(universe, defect)
+    else
+        defectIndex = point.neighbors[1].defectIndex
+        defect = universe.defects[defectIndex]
+        push!(defect.points, point)
+        mergedIndexes = [defectIndex]
+        for neighbor in point.neighbors[2:end]
+            if !(neighbor.defectIndex in mergedIndexes) 
+                push!(mergedIndexes, defectIndex)
+                Merge!(universe::Universe, defect, universe.defects[neighbor.defectIndex])
+                push!(neighbor.defectIndex, mergedIndexes)
+            end
+        end
+        Rearrange!(universe, defect)
+    end
+end
+
+function Rearrange!(universe::Universe, defect::Defect)
+    directionList = [0,0,0,0,0]
+    for p in defect.points
+        directionList[p.directionIndex] += 1
+    end
+    maxDirection = argmax(directionList)
+    defect.directionIndex = maxDirection
+    aveCoord = [0,0,0]
+    for p in defect.points
+        p.directionIndex = maxDirection
+        aveCoord[1] += p.coord[1]
+        aveCoord[2] += p.coord[2]
+        aveCoord[3] += p.coord[3]
+    end
+    aveCoord[1] /= UInt32(round(length(defect.points)))
+    aveCoord[1] /= UInt32(round(length(defect.points)))
+    aveCoord[1] /= UInt32(round(length(defect.points)))
+end
+
+
+function Base.push!(defect::Defect, point::Point)
+    push!(defect.points, point)
+    point.defectIndex = defect.index
+end
+        
+function Merge!(universe::Universe, defect1::Defect, defect2::Defect)
+    defect1.points = vcat(defect1.points, defect2.points)
+    for point in defect2.points
+        point.defectIndex = defect1.index
+    end
+    delete!(universe, defect2)
+end
+
+function Base.delete!(universe::Universe, defect::Defect)
+    deleteat!(universe.defects, defect.index)
+    for defect in universe.defects[defect.index:end]
+        SetDefectIndex!(defect, defect.index - 1)
+    end
+end
+
+function SetDefectIndex(universe::Universe, defect::Defect, index::Int64)
+    defect.index = index
+    for p in defect.points
+        p.defectIndex = index
+    end
+end
+
+
+function Base.push!(universe::Universe, defect::Defect)
+    push!(universe.defects, defect)
+    universe.defectNum += 1
+    defect.index = universe.defectNum
+    for point in defect.points
+        point.defectIndex = defect.index
+    end
+end
+
+
+
+
+
 function Base.delete!(universe::Universe, point::Point)
     DeleteNeighbors(universe, point)
     DeleteBasic!(universe, point)
@@ -185,25 +296,69 @@ function DeleteNeighbors(universe::Universe, point::Point)
 end
 
 
+
 function Displace!(universe::Universe, point::Point, newCoord::Vector{Int64})
     @assert(universe.map[point.coord[1], point.coord[2], point.coord[3]] > 0, "point not in map!")
     @assert(universe.map[newCoord[1], newCoord[2], newCoord[3]] == 0, "points overlap!")
+    neighborsBefore = point.neighbors
     DisplaceBasic!(universe, point, newCoord)
+    DisplaceMap!(universe, point, newCoord)
 end
 
 function DisplaceBasic!(universe::Universe, point::Point, newCoord::Vector{Int64})
+    point.coord = newCoord
+end
+
+function DisplaceMap!(universe::Universe, point::Point, newCoord::Vector{Int64})
     universe.map[point.coord[1], point.coord[2], point.coord[3]] = UInt32(0)
     point.coord = newCoord
     universe.map[newCoord[1], newCoord[2], newCoord[3]] = point.index
 end
 
+function DisplaceNeighbors!(universe::Universe, point::Point, neighborsBefore::Vector{Point}) 
+    # use it after a lot of points have been displaced
+    neighborIndexes = UInt32[]
+    neighbors = Point[]
+    for i in [-1,1]
+        for j in [-1,1]
+            for k in [-1,1]
+                coord = point.coord + [i,j,k]
+                try
+                    index = universe.map[coord[1], coord[2], coord[3]] 
+                catch BoundsError
+                    continue
+                end
+                if index > 0
+                    neighbor = universe.points[index]
+                    push!(neighborIndexes, index)
+                    push!(neighbors, neighbor)
+                end
+            end
+        end
+    end
+    neighborIndexesBefore = [p.index for p in neighborsBefore]
+    dropedNeighborIndexes = setdiff(neighborIndexesBefore, neighborIndexes)
+    newNeighborIndexes = setdiff(neighborIndexes, neighborIndexesBefore)
+    for index in dropedNeighborIndexes
+        neighbor = universe.points[index]
+        deleteat!(neighbor.neighbors, findfirst(p->p.id==point.id,neighbor.neighbors))
+    end
+    for index in newNeighborIndexes
+        neighbor = universe.points[index]
+        push!(neighbor.neighbors, point)
+    end
+    point.neighbors = neighbors
+end
+
+
 
 universe = Universe([10,10,10])
-point1 = Point(UInt8(1), [3,3,3])
-point2 = Point(UInt8(1), [4,4,4])
-point3 = Point(UInt8(1), [2,2,2])
+point1 = Point(UInt8(1), [3,3,3], [1,1,1])
+point2 = Point(UInt8(1), [4,4,4], [1,1,1])
+point3 = Point(UInt8(1), [2,2,2], [1,1,1])
 
-filename = "/mnt/c/Users/buaax/Desktop/test.dump"
+
+filename = "/mnt/c/Users/xuke/Desktop/test.dump"
 RefreshFile(filename)
 push!(universe, point1)
 push!(universe, point2)
