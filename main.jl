@@ -106,7 +106,7 @@ function NeighborInPush!(universe::Universe, point::Point)
     end
 end
 
-function Push_Annihilate!(universe::Universe, point::Point) error("to do: annihilate") end
+function AnnihilateInPush!(universe::Universe, point::Point) error("to do: annihilate") end
 
 function Base.push!(defect::Defect, point::Point)
     push!(defect.pointIndexes, point.index)
