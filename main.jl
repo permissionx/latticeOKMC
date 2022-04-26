@@ -1,5 +1,7 @@
 using StatsBase
 using Crayons
+include("geometry.jl")
+using .Geometry
 
 const directionDir = Int64[[1,1,1],
                       [1,1,-1],
@@ -22,11 +24,13 @@ mutable struct Point
     end
 end
 
+
 const pointTypeNames = ["SIA", "Vac"]
 function Base.display(point::Point)
     print("$(point.id) $(point.index) $(pointTypeNames[point.type]) \
           ($(point.coord[1]) $(point.coord[2]) $(point.coord[3]))")
 end
+
 
 function Base.display(points::Vector{Point})
     println("$(length(points))-point universe:")
@@ -40,29 +44,32 @@ end
 
 mutable struct Defect
     index::UInt32
+    id :: Int64
     type::UInt8
     points::Vector{Point}
     directionIndex::Vector{Int64}
     function Defect()
         points = Point[]
-        new(UInt32(0), UInt8(0), points, [0,0,0])
+        new(UInt32(0), 0, UInt8(0), points, [0,0,0])
     end
 end
- 
+
+
 mutable struct Universe
     mapsize::Vector{Int64}
     map::Array{UInt32, 3}
     points::Vector{Point}
     pointNum::UInt32
-    maxID::Int64
+    maxPointID::Int64
     defects::Vector{Defect}
     defectNum::UInt32
+    maxDefectID::Int64
     nstep::Int64
     function Universe(mapsize::Vector{Int64})
         map = zeros(UInt32, mapsize[1], mapsize[2], mapsize[3]) # N x half a lattice constant
         points = Point[]
         defects = Defect[]
-        new(mapsize, map, points, UInt32(0), 0, defects, UInt32(0),0)
+        new(mapsize, map, points, UInt32(0), 0, defects, UInt32(0), 0, 0)
     end
 end
 
@@ -138,9 +145,9 @@ end
 
 function PushBasic!(universe::Universe, point::Point)
     universe.pointNum += 1
-    universe.maxID += 1
+    universe.maxPointID += 1
     point.index = universe.pointNum
-    point.id = universe.maxID
+    point.id = universe.maxPointID
     push!(universe.points, point)
 end
 
@@ -207,22 +214,24 @@ function PushDefect!(universe::Universe, point::Point)  #Defecting after a push
 end
 
 function Rearrange!(universe::Universe, defect::Defect)
-    directionList = [0,0,0,0,0]
+    directionIndexList = [0,0,0,0,0]
     for p in defect.points
-        directionList[p.directionIndex] += 1
+        directionIndexList[p.directionIndex] += 1
     end
-    maxDirection = argmax(directionList)
-    defect.directionIndex = maxDirection
+    maxDirectionIndex = argmax(directionIndexList)
+    defect.directionIndex = maxDirectionIndex
     aveCoord = [0,0,0]
     for p in defect.points
-        p.directionIndex = maxDirection
+        p.directionIndex = maxDirectionIndex
         aveCoord[1] += p.coord[1]
         aveCoord[2] += p.coord[2]
         aveCoord[3] += p.coord[3]
     end
     aveCoord[1] /= UInt32(round(length(defect.points)))
-    aveCoord[1] /= UInt32(round(length(defect.points)))
-    aveCoord[1] /= UInt32(round(length(defect.points)))
+    aveCoord[2] /= UInt32(round(length(defect.points)))
+    aveCoord[3] /= UInt32(round(length(defect.points)))
+    coords = HexPoints(length(defect.points), aveCoord, directionDir[maxDirectionIndex])
+    Displace!(universe, defect.points, coords)
 end
 
 
@@ -258,6 +267,8 @@ function Base.push!(universe::Universe, defect::Defect)
     push!(universe.defects, defect)
     universe.defectNum += 1
     defect.index = universe.defectNum
+    universe.maxDefectID += 1
+    defect.id = universe.maxDefectID
     for point in defect.points
         point.defectIndex = defect.index
     end
@@ -265,12 +276,11 @@ end
 
 
 
-
-
 function Base.delete!(universe::Universe, point::Point)
-    DeleteNeighbors(universe, point)
+    DeleteNeighbors!(universe, point)
     DeleteBasic!(universe, point)
     DeleteMap!(universe, point)
+    DeleteDefect!(universe, point)
 end
 
 function DeleteBasic!(universe::Universe, point::Point)
@@ -278,6 +288,15 @@ function DeleteBasic!(universe::Universe, point::Point)
     deleteat!(universe.points, point.index)
     for point in universe.points[point.index:end]
         point.index -= 1
+    end
+end
+
+function DeleteDefect!(universe::Universe, point::Point)
+    defect = universe.defects[point.defectIndex]
+    if length(defect.points) == 1
+        delete!(universe, defect)
+    else
+        deleteat!(defect.points, indexof(defect.points, point))
     end
 end
 
@@ -289,18 +308,17 @@ function DeleteMap!(universe::Universe, point::Point)
     end
 end
 
-function DeleteNeighbors(universe::Universe, point::Point)
+
+function DeleteNeighbors!(universe::Universe, point::Point)
     for neighbor in point.neighbors
         deleteat!(neighbor.neighbors, findfirst(p->p.id==point.id,neighbor.neighbors))
     end
 end
 
 
-
 function Displace!(universe::Universe, point::Point, newCoord::Vector{Int64})
     @assert(universe.map[point.coord[1], point.coord[2], point.coord[3]] > 0, "point not in map!")
     @assert(universe.map[newCoord[1], newCoord[2], newCoord[3]] == 0, "points overlap!")
-    neighborsBefore = point.neighbors
     DisplaceBasic!(universe, point, newCoord)
     DisplaceMap!(universe, point, newCoord)
 end
@@ -315,10 +333,11 @@ function DisplaceMap!(universe::Universe, point::Point, newCoord::Vector{Int64})
     universe.map[newCoord[1], newCoord[2], newCoord[3]] = point.index
 end
 
-function DisplaceNeighbors!(universe::Universe, point::Point, neighborsBefore::Vector{Point}) 
+function DisplaceNeighbors!(universe::Universe, point::Point) 
     # use it after a lot of points have been displaced
     neighborIndexes = UInt32[]
     neighbors = Point[]
+    neighborsBefore = point.neighbors
     for i in [-1,1]
         for j in [-1,1]
             for k in [-1,1]
@@ -350,6 +369,31 @@ function DisplaceNeighbors!(universe::Universe, point::Point, neighborsBefore::V
     point.neighbors = neighbors
 end
 
+function Displace!(universe::Universe, points::Vector{Point}, newCoords::Matrix{Int64})
+    for i in 1:length(points)
+        Displace!(universe, point, newCoords[i,:])
+    end
+    DisplaceNeighbors!(universe, points)
+end
+
+function DisplaceSVReact!(universe::Universe, points::Vector{Point})
+    for point in points
+        for neighbor in point.neighbors
+            reversePoints = Point[]
+            if neighbor.type != point.type
+                push!(reversePoints, neighbor)
+            end
+            if !isempty(reversePoints)
+                neighbor = sample(reversePoints)
+                delete!(universe, neighbor)
+                delete!(universe, point)
+            end
+        end
+    end
+end
+
+function DisplaceDefect!(universe::Universe, points::Vector{Point})
+            
 
 
 universe = Universe([10,10,10])
@@ -364,3 +408,4 @@ push!(universe, point1)
 push!(universe, point2)
 push!(universe, point3)
 Dump(universe, filename, "a")
+

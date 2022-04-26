@@ -1,3 +1,5 @@
+module Geometry
+export HexPoints
 # plot hex
 function Hex(N::Int64)
     #plot hex bx N plots in SC in 111 direction
@@ -81,6 +83,7 @@ function ImportLatiice(xyzs::Matrix{Int64},x::Int64,y::Int64,z::Int64,N::Int64)
     xyzs
 end
 
+
 #output xyzs in lammps dump format
 function Dump(xyzs::Matrix{Int64}, filename::String, nstep::Int64)
     f = open(filename, "a")
@@ -99,13 +102,26 @@ function Dump(xyzs::Matrix{Int64}, filename::String, nstep::Int64)
     close(f)
 end
 
-filename = "/mnt/c/Users/XUKE/Desktop/hex.dump"
-f = open(filename, "w")
-close(f)
-for n = 1:100
-    xyzs = Hex(n)
-    xyzs[:,3] *= -1
-    Dump(xyzs, filename, n)
+
+function HexPoints(N::Int64, centerCood::Vector{Int64}, direction::Vector{Int64})
+    xyzs = Hex(N)
+    for i in 1:3
+        xyzs[:,i] *= direction[i]
+        xyzs[:,i] .+= centerCood[i]
+    end
+    xyzs
+end
+
+end
+
+if abspath(PROGRAM_FILE) == @__FILE__
+    filename = "/mnt/c/Users/XUKE/Desktop/hex.dump"
+    f = open(filename, "w")
+    close(f)
+    for n = 1:100
+        xyzs = Geometry.HexPoints(n, [3,3,3], [1,1,-1])
+        Geometry.Dump(xyzs, filename, n)
+    end
 end
 
 
