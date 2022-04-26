@@ -1,3 +1,6 @@
+include("geometry.jl")
+using .Geometry
+
 const DIRECTION_DIR = ([[1,1,1],
                         [1,1,-1],
                         [1,-1,1],
@@ -10,10 +13,6 @@ mutable struct Defect
     type::UInt8
     directionIndex::UInt8
     pointIndexes::Vector{UInt64}
-    function Defect(id::UInt64, type::UInt8, directionIndex::UInt8)
-        pointIndexes = Vector{UInt64}[]
-        new(id, type, directionIndex, pointIndexes)
-    end
 end
 
 
@@ -70,16 +69,49 @@ function MapCoord(universe::Universe, coord::Vector{Int16})
     coord
 end
 
-function Base.push!(universe::Universe, point::Point, type::UInt8, directionIndex::UInt8)
-    if universe.map[point.coord[1], point.coord[2], point.coord[3]] == 0
-        BasicInPush!(universe, point)
-        MapInPush!(universe, point)
-        NeighborInPush!(universe, point)
-        DefectInPush!(universe, point, type, directionIndex)
-    else
-        error("to do: push point on exsting point")
+function Base.push!(universe::Universe, points::Vector{Point}, type::UInt8, directionIndex::UInt8)
+    for point in points
+        if universe.map[point.coord[1], point.coord[2], point.coord[3]] == 0
+            BasicInPush!(universe, point)
+            MapInPush!(universe, point)
+            NeighborInPush!(universe, point)
+        else
+            error("to do: push potin on existing point")
+        end
     end
+    DefectInPush!(universe, points, type, directionIndex)
+    ReactInPushAndDisplace!(universe, points)
 end
+
+function ReactInPushAndDisplace!(universe::Universe, points::Vector{Point})
+    defectsToMerge = Defect[]
+    for point in points
+        for neighbor in point.neighbors
+            if neighbor.defect.type != point.defect.type
+                delete!(universe, point)
+                delete!(universe, neighbor)
+            elseif neighbor.defect !== point.defect && neighbor.defect.type == 1 && !(neighbor.defect in defectToMerge)
+                push!(defectsToMerge, neighbor.defect)
+            end
+        end
+    end
+    Merge(universe, defectsToMerge)
+end
+
+function Merge(universe::Universe, defects::Vector{Defect}) 
+    
+end
+
+
+function DefectInPush!(universe, points, type, directionIndex)
+    id = universe.maxDefectId + 1
+    universe.maxDefectId = id
+    pointIndexes = [p.index for p in points]
+    defect = Defect(id, type, directionIndex, pointIndexes)
+    [p.defect = defect for p in points]
+    push!(universe.defects, defect)
+end
+
 
 function BasicInPush!(universe::Universe, point::Point)  # "_" means containing
     push!(universe.points, point)
@@ -113,23 +145,8 @@ function Base.push!(defect::Defect, point::Point)
     point.defect = defect
 end
 
-function DefectInPush!(universe::Universe, point::Point, type::UInt8, drectionIndex::UInt8)
-    universe.maxDefectId += 1
-    defect = Defect(universe.maxDefectId, type, drectionIndex)
-    push!(universe.defects, defect)
-    push!(defect, point)
-    if type != 2 && !isempty(point.neighbors)
-        defects = Defect[]
-        for neighbor in point.neighbors
-            if !(neighbor.defect in defects)
-                push!(defects, neighbor.defect)
-            end
-        end
-        Merge(defects)
-    end    
-end
 
-function Merge(defects::Vector{Defect}) error("to do: merge") end
+
 
 
 universe = Universe([100,100,100])
