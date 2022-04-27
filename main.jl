@@ -90,118 +90,6 @@ function Base.push!(universe::Universe, points::Vector{Point}, type::UInt8, dire
     ReactInPushAndDisplace!(universe, points, defect)
 end
 
-
-function ReactInPushAndDisplace!(universe::Universe, points::Vector{Point}, defect::Defect)
-    defectsToMerge = Defect[defect]
-    for point in points
-        for neighbor in point.neighbors
-            if neighbor.defect.type != defect.type
-                delete!(universe, point)
-                delete!(universe, neighbor)
-            elseif neighbor.defect.type == 1 && neighbor.defect !== defect &&  !(neighbor.defect in defectToMerge)
-                push!(defectsToMerge, neighbor.defect)
-            end
-        end
-    end
-    if length(defectsToMerge) > 1 
-        Merge!(universe, defectsToMerge)
-    end
-end
-
-
-function Merge!(universe::Universe, defects::Vector{Defect}) 
-    # merge defects to defects[1]
-    defect = MergeBasic!(universe, defects)
-    Rearrange!(universe, defect)
-end
-
-
-function MergeBasic!(universe::Universe, defects::Vector{Defect})
-    for i in 2:length(defects)
-        newPointIndexes = defects[i].pointIndexes
-        defects[1].pointIndexes = vcat(defects[1].pointIndexes, newPointIndexes)
-        for index in newPointIndexes
-            universe.points[index].defect = defects[1]
-        end
-        deleteat!(universe.defects, findfirst(d -> d === defect, universe.defects))    
-    end
-end
-
-
-
-function Base.delete!(universe::Universe, point::Point)
-    BasicInDelete!(universe, point)
-    MapInDelete!(universe, point)
-    NeighborInDelete!(universe, point)
-    DefectInDelete!(universe, point)
-end
-
-function BasicDelete!(universe::Universe, point::Point) end
-
-function MapInDelete!(universe::Universe, point::Point)
-    universe.map[point.coord[1], point.coord[2], point.coord[3]] = 0
-end
-
-function NeighborInDelete!(universe::Universe, point::Point)
-    for neighbor in point.neighbors
-        deleteat!(neighbor.neighbors, findfirst(p -> p === point, neighbor.neighbors))
-    end
-end
-
-function DefectInDelete!(universe::Universe, point::Point)
-    defect = point.defect
-    if length(defect.pointIndexes) == 1
-        deleteat!(universe.defects, findfirst(d -> d === defect, universe.defects))
-    else
-        deleteat!(defect.pointIndexes, findfirst(pIndex -> pIndex == point.index, defect.pointIndexes))
-    end
-end
-
-function BasicInDelete!(universe::Universe, point::Point) end
-
-
-
-function Rearrange!(universe::Universe, defect::Defect)
-    aveCoord = Vector{Int16}([0,0,0])
-    for pIndex in defect.directionIndex
-        p = universe.points[pIndex]
-        aveCoord += p.coord
-    end
-    aveCoord = Vector{Int16}(round.(aveCoord / length(defect.directionIndex)))
-    coords = HexPoints(length(defect.directionIndex), aveCoord, DIRECTION_DIR[defect.directionIndex])
-    points = [universe.points[pIndex] for pIndex in defect.pointIndexes]
-    displace!(universe, points, coords)
-end
-
-function displace!(universe::Universe, points::Vector{Point}, newCoords::Vector{Int16}) 
-    BasicInDisplace!(universe, points, newCoord)
-    MapInDisplace!(universe, points, newCoord)
-    NeighborInDisplace!(universe, points, newCoord)
-    DefectInDisplace!(universe, points, newCoord)
-end
-
-function BasicInDisplace!(universe::Universe, points::Vector{Point}, newCoord::Vector{Int16})
-    for p in points
-        p.coord = newCoord
-    end
-end
-
-function MapInDisplace!(universe::Universe, points::Vector{Point}, newCoord::Vector{Int16})
-    for p in points
-        universe.map[p.coord[1], p.coord[2], p.coord[3]] = 0
-    end
-    for p in points
-        universe.map[newCoord[1], newCoord[2], newCoord[3]] = p.index
-    end
-end
-
-function NeighborInDisplace!(universe::Universe, point::Points, newCoord::Vector{Int64}) 
-    
-end
-
-
-
-
 function DefectInPush!(universe, points, type, directionIndex)
     id = universe.maxDefectId + 1
     universe.maxDefectId = id
@@ -237,6 +125,122 @@ function NeighborInPush!(universe::Universe, point::Point)
         end
     end
 end
+
+function ReactInPushAndDisplace!(universe::Universe, points::Vector{Point}, defect::Defect)
+    defectsToMerge = Defect[defect]
+    for point in points
+        for neighbor in point.neighbors
+            if neighbor.defect.type != defect.type
+                delete!(universe, point)
+                delete!(universe, neighbor)
+            elseif neighbor.defect.type == 1 && neighbor.defect !== defect &&  !(neighbor.defect in defectToMerge)
+                push!(defectsToMerge, neighbor.defect)
+            end
+        end
+    end
+    if length(defectsToMerge) > 1 
+        Merge!(universe, defectsToMerge)
+    end
+end
+
+
+function Merge!(universe::Universe, defects::Vector{Defect}) 
+    # merge defects to defects[1]
+    defect = MergeBasic!(universe, defects)
+    Rearrange!(universe, defect)
+end
+
+
+
+function MergeBasic!(universe::Universe, defects::Vector{Defect})
+    for i in 2:length(defects)
+        newPointIndexes = defects[i].pointIndexes
+        defects[1].pointIndexes = vcat(defects[1].pointIndexes, newPointIndexes)
+        for index in newPointIndexes
+            universe.points[index].defect = defects[1]
+        end
+        deleteat!(universe.defects, findfirst(d -> d === defect, universe.defects))    
+    end
+end
+
+function Rearrange!(universe::Universe, defect::Defect)
+    aveCoord = Vector{Int16}([0,0,0])
+    for pIndex in defect.directionIndex
+        p = universe.points[pIndex]
+        aveCoord += p.coord
+    end
+    aveCoord = Vector{Int16}(round.(aveCoord / length(defect.directionIndex)))
+    coords = HexPoints(length(defect.directionIndex), aveCoord, DIRECTION_DIR[defect.directionIndex])
+    points = [universe.points[pIndex] for pIndex in defect.pointIndexes]
+    displace!(universe, points, coords)
+end
+
+function Base.delete!(universe::Universe, point::Point)
+    BasicInDelete!(universe, point)
+    MapInDelete!(universe, point)
+    NeighborInDelete!(universe, point)
+    DefectInDelete!(universe, point)
+end
+
+function BasicDelete!(universe::Universe, point::Point) end
+
+function MapInDelete!(universe::Universe, point::Point)
+    universe.map[point.coord[1], point.coord[2], point.coord[3]] = 0
+end
+
+function NeighborInDelete!(universe::Universe, point::Point)
+    for neighbor in point.neighbors
+        deleteat!(neighbor.neighbors, findfirst(p -> p === point, neighbor.neighbors))
+    end
+end
+
+function DefectInDelete!(universe::Universe, point::Point)
+    defect = point.defect
+    if length(defect.pointIndexes) == 1
+        deleteat!(universe.defects, findfirst(d -> d === defect, universe.defects))
+    else
+        deleteat!(defect.pointIndexes, findfirst(pIndex -> pIndex == point.index, defect.pointIndexes))
+    end
+end
+
+function BasicInDelete!(universe::Universe, point::Point) end
+
+
+
+function displace!(universe::Universe, points::Vector{Point}, newCoords::Matrix{Int16}) 
+    newCoords = [MapCoord(universe, newCoords[i,:]) for i in size(newCoords)[1]]
+    BasicAndMapInDisplace!(universe, points, newCoords)
+    NeighborInDisplace!(universe, points, newCoords)
+    DefectInDisplace!(universe, points, newCoords)
+end
+
+
+
+function BasicAndMapInDisplace!(universe::Universe, points::Vector{Point}, newCoords::Matrix{Int16})
+    for i in 1:length(points)
+        p = points[i]
+        universe.map[p.coord[1], p.coord[2], p.coord[3]] = 0
+        p.coord = newCoords[i,:]
+        universe.map[p.coord[1], p.coord[2], p.coord[3]] = p.index
+    end
+end
+
+function NeighborInDisplace!(universe::Universe, point::Points, newCoords::Matrix{Int64}) 
+    for p in points
+        neighbors = p.neighbors
+        for x in Vector{Int16}([-1, 1])
+            for y in Vector{Int16}([-1, 1])
+                for z in Vector{Int16}([-1, 1])
+                    coord = MapCoord(universe, point.coord + [x,y,z])
+                    neighborIndex = universe.map[coord[1], coord[2], coord[3]]
+                    
+    end
+end
+
+
+
+
+
 
 
 
