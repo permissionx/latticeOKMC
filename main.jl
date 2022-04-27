@@ -259,7 +259,7 @@ function Base.delete!(universe::Universe, point::Point)
     DefectInDelete!(universe, point)
 end
 
-function BasicDelete!(universe::Universe, point::Point) 
+function BasicInDelete!(universe::Universe, point::Point) 
     universe.pointNum -= 1
 end
 
@@ -281,8 +281,6 @@ function DefectInDelete!(universe::Universe, point::Point)
         deleteat!(defect.pointIndexes, findfirst(pointIndex -> pointIndex == point.index, defect.pointIndexes))
     end
 end
-
-function BasicInDelete!(universe::Universe, point::Point) end
 
 
 
