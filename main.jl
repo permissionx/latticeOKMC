@@ -294,7 +294,6 @@ function displace!(universe::Universe, points::Vector{Point}, newCoords::Matrix{
 end
 
 
-
 function BasicAndMapInDisplace!(universe::Universe, points::Vector{Point}, newCoords::Matrix{Int16})
     for i in 1:length(points)
         point = points[i]
