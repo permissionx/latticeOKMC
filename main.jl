@@ -11,21 +11,21 @@ const DEFECT_TYPE_NAME = ["SIA", "Vac"]
 
 
 mutable struct Defect
-    id::UInt64    # name 
+    id::UInt32    # name 
     type::UInt8
     directionIndex::UInt8
-    pointIndexes::Vector{UInt64}
+    pointIndexes::Vector{UInt32}
 end
 
 
 mutable struct Point
-    index::UInt64   # name and index (index nerver changed)
+    index::UInt32   # name and index (index nerver changed)
     coord::Vector{Int16}
     defect::Defect
     neighbors::Vector{Point}
     function Point(coord)
-        pointIndexes = UInt64[]
-        defect = Defect(UInt64(0), UInt8(0), UInt8(0), pointIndexes)
+        pointIndexes = UInt32[]
+        defect = Defect(UInt32(0), UInt8(0), UInt8(0), pointIndexes)
         neighbors = Vector{Point}[]
         new(0, coord, defect, neighbors)
     end
@@ -40,7 +40,7 @@ end
 mutable struct Universe
     points::Vector{Point}
     defects::Vector{Defect}
-    maxDefectId::UInt64
+    maxDefectId::UInt32
     map::Array{UInt32,3}
     mapSize::Vector{UInt16}
     function Universe(mapSize::Vector{Int64})
