@@ -93,9 +93,9 @@ end
 function DefectInPush!(universe, points, type, directionIndex)
     id = universe.maxDefectId + 1
     universe.maxDefectId = id
-    pointIndexes = [p.index for p in points]
+    pointIndexes = [point.index for point in points]
     defect = Defect(id, type, directionIndex, pointIndexes)
-    [p.defect = defect for p in points]
+    [point.defect = defect for point in points]
     push!(universe.defects, defect)
     defect
 end
@@ -166,8 +166,8 @@ end
 function Rearrange!(universe::Universe, defect::Defect)
     aveCoord = Vector{Int16}([0,0,0])
     for pIndex in defect.directionIndex
-        p = universe.points[pIndex]
-        aveCoord += p.coord
+        point = universe.points[pIndex]
+        aveCoord += point.coord
     end
     aveCoord = Vector{Int16}(round.(aveCoord / length(defect.directionIndex)))
     coords = HexPoints(length(defect.directionIndex), aveCoord, DIRECTION_DIR[defect.directionIndex])
@@ -190,7 +190,7 @@ end
 
 function NeighborInDelete!(universe::Universe, point::Point)
     for neighbor in point.neighbors
-        deleteat!(neighbor.neighbors, findfirst(p -> p === point, neighbor.neighbors))
+        deleteat!(neighbor.neighbors, findfirst(point -> point === point, neighbor.neighbors))
     end
 end
 
@@ -218,16 +218,16 @@ end
 
 function BasicAndMapInDisplace!(universe::Universe, points::Vector{Point}, newCoords::Matrix{Int16})
     for i in 1:length(points)
-        p = points[i]
-        universe.map[p.coord[1], p.coord[2], p.coord[3]] = 0
-        p.coord = newCoords[i,:]
-        universe.map[p.coord[1], p.coord[2], p.coord[3]] = p.index
+        point = points[i]
+        universe.map[point.coord[1], point.coord[2], point.coord[3]] = 0
+        point.coord = newCoords[i,:]
+        universe.map[point.coord[1], point.coord[2], point.coord[3]] = point.index
     end
 end
 
 function NeighborInDisplace!(universe::Universe, point::Points, newCoords::Matrix{Int64}) 
-    for p in points
-        neighbors = p.neighbors
+    for point in points
+        neighbors = point.neighbors
         for x in Vector{Int16}([-1, 1])
             for y in Vector{Int16}([-1, 1])
                 for z in Vector{Int16}([-1, 1])
