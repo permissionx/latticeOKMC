@@ -4,79 +4,79 @@ export HexPoints
 function Hex(N::Int64)
     #plot hex bx N plots in SC in 111 direction
     # todo: expand circle by circle, not 3 circles by 3 circles
-    xyzs = Array{Int16}(undef,0,3)
-    xyzs = ImportLatiice(xyzs,Int16(0),Int16(0),Int16(0),N)
+    xyzs = Array{Int64}(undef,0,3)
+    xyzs = ImportLatiice(xyzs,0,0,0,N)
     if size(xyzs)[1] >= N
         return xyzs
     end
-    R = Int16(1)
+    R = 1
     while true
-        x = -Int16(2)*R
-        y = Int16(2)*R
-        z = Int16(0)
-        for _ in Int16(1):R
-            y = y - Int16(2)
-            z = z + Int16(2)
+        x = -2*R
+        y = 2*R
+        z = 0
+        for _ in 1:R
+            y = y - 2
+            z = z + 2
             xyzs = ImportLatiice(xyzs,x,y,z,N)
             if size(xyzs)[1] >= N
                 return xyzs
             end
         end
-        for _ in Int16(1):R
-            y = y - Int16(2)
-            x = x + Int16(2)
+        for _ in 1:R
+            y = y - 2
+            x = x + 2
             xyzs = ImportLatiice(xyzs,x,y,z,N)
             if size(xyzs)[1] >= N
                 return xyzs
             end
         end
-        for _ in Int16(1):R
-            x = x + Int16(2)
-            z = z - Int16(2)
+        for _ in 1:R
+            x = x + 2
+            z = z - 2
             xyzs = ImportLatiice(xyzs,x,y,z,N)
             if size(xyzs)[1] >= N
                 return xyzs
             end
         end
-        for _ in Int16(1):R
-            y = y + Int16(2)
-            z = z - Int16(2)
+        for _ in 1:R
+            y = y + 2
+            z = z - 2
             xyzs = ImportLatiice(xyzs,x,y,z,N)
             if size(xyzs)[1] >= N
                 return xyzs
             end
         end
-        for _ in Int16(1):R
-            y = y + Int16(2)
-            x = x - Int16(2)
+        for _ in 1:R
+            y = y + 2
+            x = x - 2
             xyzs = ImportLatiice(xyzs,x,y,z,N)
             if size(xyzs)[1] >= N
                 return xyzs
             end
         end
-        for _ in Int16(1):R
-            x = x - Int16(2)
-            z = z + Int16(2)
+        for _ in 1:R
+            x = x - 2
+            z = z + 2
             xyzs = ImportLatiice(xyzs,x,y,z,N)
             if size(xyzs)[1] >= N
                 return xyzs
             end
         end
-        R += Int16(1)
+        R += 1
     end
 end
 
 
-function ImportLatiice(xyzs::Matrix{Int16},x::Int16,y::Int16,z::Int16,N::Int64)
+function ImportLatiice(xyzs::Matrix{Int64},x::Int64,y::Int64,z::Int64,N::Int64)
     xyzs = vcat(xyzs, [x y z])
     if size(xyzs)[1] >= N
         return xyzs
     end
-    xyzs = vcat(xyzs, [x-Int16(1) y+Int16(1) z+Int16(1)])
+    xyzs = vcat(xyzs, [x-1 y+1 z+1])
     if size(xyzs)[1] >= N
         return xyzs
     end
-    xyzs = vcat(xyzs, [x-Int16(1) y-Int16(1) z+Int16(1)])
+    xyzs = vcat(xyzs, [x-1 y-1 z+1])
     if size(xyzs)[1] >= N
         return xyzs
     end
@@ -85,7 +85,7 @@ end
 
 
 #output xyzs in lammps dump format
-function Dump(xyzs::Matrix{Int16}, filename::String, nstep::Int64)
+function Dump(xyzs::Matrix{Int64}, filename::String, nstep::Int64)
     f = open(filename, "a")
     write(f, "ITEM: TIMESTEP\n")
     write(f, "$(nstep)\n")
@@ -103,7 +103,7 @@ function Dump(xyzs::Matrix{Int16}, filename::String, nstep::Int64)
 end
 
 
-function HexPoints(N::Int64, centerCood::Vector{Int16}, direction::Vector{Int64})
+function HexPoints(N::Int64, centerCood::Vector{Int64}, direction::Vector{Int64})
     xyzs = Hex(N)
     for i in 1:3
         xyzs[:,i] *= direction[i]
@@ -114,15 +114,15 @@ end
 
 end
 
-if abspath(PROGRAM_FILE) == @__FILE__
+#if abspath(PROGRAM_FILE) == @__FILE__
     filename = "/mnt/c/Users/XUKE/Desktop/hex.dump"
     f = open(filename, "w")
     close(f)
     for n = 1:100
-        xyzs = Geometry.HexPoints(n, Vector{Int16}([3,3,3]), Vector{Int64}([1,1,-1]))
+        xyzs = Geometry.HexPoints(n, [3,3,3], [1,1,-1])
         Geometry.Dump(xyzs, filename, n)
     end
-end
+#end
 
 
 
