@@ -227,13 +227,33 @@ end
 
 function NeighborInDisplace!(universe::Universe, point::Points, newCoords::Matrix{Int64}) 
     for point in points
-        neighbors = point.neighbors
+        oldNeighborIndexes = [point.index for point in point.neighbors]
+        neighborIndexes = UInt32[]
         for x in Vector{Int16}([-1, 1])
             for y in Vector{Int16}([-1, 1])
                 for z in Vector{Int16}([-1, 1])
                     coord = MapCoord(universe, point.coord + [x,y,z])
                     neighborIndex = universe.map[coord[1], coord[2], coord[3]]
-                    
+                    if neighborIndex > 0
+                        push!(neighborIndexes, neighborIndex)
+                    end
+                end
+            end
+        end
+        if !issetequal(oldNeighborIndexes, neighborIndexes)
+            dropedNeighborIndexes = setdiff(neighborIndexesBefore, neighborIndexes)
+            newNeighborIndexes = setdiff(neighborIndexes, neighborIndexesBefore)
+            for dropedNeighborIndex in dropedNeighborIndexes
+                dropedNeighbor = universe.points[dropedNeighborIndex]
+                deleteat!(dropedNeighbor.neighbors, 
+                          findfirst(point -> point === point, dropedNeighbor.neighbors))
+            end
+            for newNeighborIndex in newNeighborIndexes
+                newNeighbor = universe.points[newNeighborIndex]
+                push!(newNeighbor.neighbors, point)
+            end
+            point.neighbors = [universe.points[index] for index in neighborIndexes]
+        end
     end
 end
 
