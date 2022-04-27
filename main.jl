@@ -39,19 +39,46 @@ end
 
 mutable struct Universe
     points::Vector{Point}
+    pointNum::UInt32
     defects::Vector{Defect}
     maxDefectId::UInt32
     map::Array{UInt32,3}
     mapSize::Vector{UInt16}
-    function Universe(mapSize::Vector{Int64})
+    nStep::Int64
+    function Universe(mapSize::Vector{UInt16})
         mapSize = Vector{UInt16}(mapSize)
         points = Point[]
         defects = Defect[]
         map = zeros(UInt32, mapSize[1], mapSize[2], mapSize[3])
-        new(points, defects, 0, map, mapSize)
+        new(points, UInt32(0), defects, UInt32(0), map, mapSize, 0)
     end
 end
 
+function RefreshFile(fileName::String)
+    file = open(fileName, "w")
+    close(file)
+end
+
+function Dump(universe::Universe, fileName::String, mode::String)
+    file = open(fileName, mode)
+    write(file, "ITEM: TIMESTEP\n")
+    write(file, "$(universe.nStep)\n")
+    write(file, "ITEM: NUMBER OF ATOMS\n")
+    write(file, "$(universe.pointNum)\n")
+    write(file, "ITEM: BOX BOUNDS pp pp pp\n")
+    write(file, "1 $(universe.mapSize[1]+1)\n")
+    write(file, "1 $(universe.mapSize[2]+1)\n")
+    write(file, "1 $(universe.mapSize[3]+1)\n")
+    write(file, "ITEM: ATOMS id type x y z\n")
+    for i = 1:length(universe.defects)
+        for j = 1:length(defect.pointIndexes)
+            point = universe.points[j]
+            write(file, 
+            "$(point.index) $(defect.type) $(point.coord[1]) $(point.coord[2]) $(point.coord[3])\n")
+        end
+    end
+    close(file)
+end
 
 function Base.display(universe::Universe, defect::Defect)
     direction = DIRECTION_DIR[defect.directionIndex]
@@ -87,7 +114,13 @@ function Base.push!(universe::Universe, points::Vector{Point}, type::UInt8, dire
         end
     end
     defect = DefectInPush!(universe, points, type, directionIndex)
-    ReactInPushAndDisplace!(universe, points, defect)
+    ReactInPushAndDisplace!(universe, points)
+end
+
+function BasicInPush!(universe::Universe, point::Point)  # "_" means containing
+    push!(universe.points, point)
+    point.index = length(universe.points)
+    universe.pointNum += 1
 end
 
 function DefectInPush!(universe, points, type, directionIndex)
@@ -101,10 +134,6 @@ function DefectInPush!(universe, points, type, directionIndex)
 end
 
 
-function BasicInPush!(universe::Universe, point::Point)  # "_" means containing
-    push!(universe.points, point)
-    point.index = length(universe.points)
-end
 
 function MapInPush!(universe::Universe, point::Point)
     universe.map[point.coord[1], point.coord[2], point.coord[3]] = point.index
@@ -126,7 +155,8 @@ function NeighborInPush!(universe::Universe, point::Point)
     end
 end
 
-function ReactInPushAndDisplace!(universe::Universe, points::Vector{Point}, defect::Defect)
+function ReactInPushAndDisplace!(universe::Universe, points::Vector{Point})
+    defect = points[1].defect
     defectsToMerge = Defect[defect]
     for point in points
         for neighbor in point.neighbors
@@ -147,9 +177,8 @@ end
 function Merge!(universe::Universe, defects::Vector{Defect}) 
     # merge defects to defects[1]
     defect = MergeBasic!(universe, defects)
-    Rearrange!(universe, defect)
+    Arrange!(universe, defect)
 end
-
 
 
 function MergeBasic!(universe::Universe, defects::Vector{Defect})
@@ -163,7 +192,7 @@ function MergeBasic!(universe::Universe, defects::Vector{Defect})
     end
 end
 
-function Rearrange!(universe::Universe, defect::Defect)
+function Arrange!(universe::Universe, defect::Defect)
     aveCoord = Vector{Int16}([0,0,0])
     for pIndex in defect.directionIndex
         point = universe.points[pIndex]
@@ -182,7 +211,9 @@ function Base.delete!(universe::Universe, point::Point)
     DefectInDelete!(universe, point)
 end
 
-function BasicDelete!(universe::Universe, point::Point) end
+function BasicDelete!(universe::Universe, point::Point) 
+    universe.pointNum -= 1
+end
 
 function MapInDelete!(universe::Universe, point::Point)
     universe.map[point.coord[1], point.coord[2], point.coord[3]] = 0
@@ -210,8 +241,8 @@ function BasicInDelete!(universe::Universe, point::Point) end
 function displace!(universe::Universe, points::Vector{Point}, newCoords::Matrix{Int16}) 
     newCoords = [MapCoord(universe, newCoords[i,:]) for i in size(newCoords)[1]]
     BasicAndMapInDisplace!(universe, points, newCoords)
-    NeighborInDisplace!(universe, points, newCoords)
-    DefectInDisplace!(universe, points, newCoords)
+    NeighborInDisplace!(universe, points)
+    ReactInPushAndDisplace!(universe, points)
 end
 
 
@@ -225,7 +256,7 @@ function BasicAndMapInDisplace!(universe::Universe, points::Vector{Point}, newCo
     end
 end
 
-function NeighborInDisplace!(universe::Universe, point::Points, newCoords::Matrix{Int64}) 
+function NeighborInDisplace!(universe::Universe, points::Vector{Point}) 
     for point in points
         oldNeighborIndexes = [point.index for point in point.neighbors]
         neighborIndexes = UInt32[]
@@ -259,12 +290,8 @@ end
 
 
 
-
-
-
-
-
-universe = Universe([100,100,100])
-point1 = Point([1,1,1])
-push!(universe, point1, UInt8(2), UInt8(5))
-
+mapSize = Vector{UInt16}([10,10,10])
+universe = Universe(mapSize)
+fileName = "/mnt/c/Users/buaax/Desktop/test.dump"
+RefreshFile(fileName)
+Dump(universe, fileName, "a")
