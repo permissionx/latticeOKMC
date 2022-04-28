@@ -1,6 +1,8 @@
 include("geometry.jl")
 using .Geometry
 using StatsBase
+using Random
+Random.seed!(1234)
 
 
 const SIA_DIRECTIONS = ([Vector{Int16}([1,1,1]), 
@@ -45,17 +47,18 @@ end
 
 
 function Base.display(point::Point)
-    print("$(point.index) $(DEFECT_TYPE_NAMES[point.defect.type]) \
+    print("$(point.index) $(DEFECT_TYPE_NAMES[point.defect.type]) $(point.defect.id) \
           ($(point.coord[1]) $(point.coord[2]) $(point.coord[3]))")
+    println()
 end
 
 function Base.display(points::Vector{Point})
     println("$(length(points))-point array:")
-    println("id type (x y z)")  # id is index
+    println("id type defect (x y z)")  # id is index
     for point in points
         display(point)
-        println()
     end
+    println()
 end
 
 mutable struct Universe
@@ -75,6 +78,33 @@ mutable struct Universe
     end
 end
 
+function Base.display(universe::Universe, defect::Defect)
+    direction = SIA_DIRECTIONS[defect.directionIndex]
+    print("id: $(defect.id)  type: $(DEFECT_TYPE_NAMES[defect.type]) ")
+    if defect.type == 1
+        println("direction: ($(direction[1]) $(direction[2]) $(direction[3]))")
+    else
+        println()
+    end
+    display(universe.points[defect.pointIndexes])
+end
+
+function Base.display(universe::Universe)
+    for defect in universe.defects
+        display(universe, defect)
+    end
+end
+
+function AlivePoints(universe::Universe)
+    alivePoints = Point[]
+    for defect in universe.defects
+        for index in defect.pointIndexes
+            push!(alivePoints, universe.points[index])
+        end
+    end
+    return alivePoints
+end
+
 function RefreshFile(fileName::String)
     file = open(fileName, "w")
     close(file)
@@ -90,25 +120,18 @@ function Dump(universe::Universe, fileName::String, mode::String)
     write(file, "1 $(universe.mapSize[1]+1)\n")
     write(file, "1 $(universe.mapSize[2]+1)\n")
     write(file, "1 $(universe.mapSize[3]+1)\n")
-    write(file, "ITEM: ATOMS id type x y z\n")
+    write(file, "ITEM: ATOMS id type defect x y z\n")
     for defect in universe.defects
         for index in defect.pointIndexes
             point = universe.points[index]
             write(file, 
-            "$(point.index) $(defect.type) $(point.coord[1]) $(point.coord[2]) $(point.coord[3])\n")
+            "$(point.index) $(defect.type) $(defect.id) $(point.coord[1]) $(point.coord[2]) $(point.coord[3])\n")
         end
     end
     close(file)
 end
 
-function Base.display(universe::Universe, defect::Defect)
-    direction = SIA_DIRECTIONS[defect.directionIndex]
-    println("id: $(defect.id)  type: $(DEFECT_TYPE_NAME[defect.type])  \
-            direction: ($(direction[1]) $(direction[2]) $(direction[3]))")
-    for index in defect.pointIndexes
-        display(universe.points[index])
-    end
-end
+
 
 
 function CoordInPBC(universe::Universe, coord::Vector{Int16})
@@ -163,49 +186,17 @@ end
 function Base.push!(universe::Universe, points::Vector{Point}, type::UInt8, directionIndex::UInt8)
     # push defect by defect only 
     # vac is alwyas pushed solely
-    newIndexes = Int64[]
-    for i in 1:length(points)
-        point = points[i]
-        positionIndex = universe.map[point.coord[1], point.coord[2], point.coord[3]]
-        BasicInPush!(universe, point)
-        if positionIndex == 0
-            MapInPush!(universe, point)
+    alivePoints = Point[]
+    for point in points
+        isDeleted = OccupyInPushAndDisplace!(universe, point ,type)
+        if !isDeleted
+            BasicInPush!(universe, point)
+            MapInPushAndDisplace!(universe, point)
             NeighborInPush!(universe, point)
-        else
-            # three condition:
-            # vac to vac 
-            # vac to sia or sia to vac
-            # sia to sia
-            if universe.points[positionIndex].defect.type != type # for vac to sia
-                delete!(universe, occupiedPoint)
-                push!(newIndexes, i)
-                # If SIA ocuupied by SIA/SIA cluster, it must be a neighbor, and thus it is goning to be merged. 
-            elseif type == 2 # for vac to vac
-                x = sample(Int16[1, -1])
-                y = sample(Int16[1, -1])
-                z = sample(Int16[1, -1])
-                while true
-                    x = sample([x*Int16(2), Int16(0)])
-                    y = sample([y*Int16(2), Int16(0)])
-                    if !(x == 0 && y == 0)
-                        z = sample([z*Int16(2), Int16(0)])
-                    end
-                    if x == 2 && y == 2 && z == 2
-                        x = Int16(1)
-                        y = Int16(1)
-                        z = Int16(1)
-                    end
-                    point.coord = [point.coord[1]+x, point.coord[2]+y, point.coord[3]+z]
-                    if universe.map[point.coord[1], point.coord[2], point.coord[3]] == 0
-                        MapInPush!(universe, point)
-                        NeighborInPush!(universe, point)
-                        break
-                    end
-                end
-            end
+            push!(alivePoints, point)
         end
     end
-    points = points[newIndexes]
+    points = alivePoints
     if length(points) > 0
         DefectInPush!(universe, points, type, directionIndex)
         ReactInPushAndDisplace!(universe, points)
@@ -213,13 +204,57 @@ function Base.push!(universe::Universe, points::Vector{Point}, type::UInt8, dire
 end
 
 
+
+function OccupyInPushAndDisplace!(universe::Universe, point::Point, type::UInt8)
+    positionIndex = universe.map[point.coord[1], point.coord[2], point.coord[3]]
+    if positionIndex != 0
+        # three condition:
+        # vac to vac 
+        # vac to sia or sia to vac
+        # sia to sia
+        occupiedPoint = universe.points[positionIndex]
+        if occupiedPoint.defect.type != type # for vac to sia
+            delete!(universe, occupiedPoint)
+            return true
+            # If SIA ocuupied by SIA/SIA cluster, it must be a neighbor, and thus it is goning to be merged. 
+        else  # for vac to vac & SIA to SIA
+            x0 = sample(Int16[1, -1])
+            y0 = sample(Int16[1, -1])
+            z0 = sample(Int16[1, -1])
+            count = 0
+            while true
+                count += 1
+                x = sample([x0*Int16(2), Int16(0)], Weights([1,1]))
+                y = sample([y0*Int16(2), Int16(0)], Weights([1,1]))
+                if x == 0 && y == 0
+                    z = z0*Int16(2)
+                else
+                    z = sample([z0*Int16(2), Int16(0)], Weights([1,1]))
+                end
+                if x == 2 && y == 2 && z == 2
+                    x = Int16(1)
+                    y = Int16(1)
+                    z = Int16(1)
+                end
+                point.coord = [point.coord[1]+x, point.coord[2]+y, point.coord[3]+z]
+                CoordInPBC(universe, point.coord)
+                if universe.map[point.coord[1], point.coord[2], point.coord[3]] == 0
+                    break
+                end
+                @assert(count < 1000, "Too many iterations in OccupyInPushAndDisplace!")
+            end
+        end
+    end
+    return false
+end
+
 function BasicInPush!(universe::Universe, point::Point)  
     push!(universe.points, point)
     point.index = length(universe.points)
     universe.pointNum += 1
 end
 
-function MapInPush!(universe::Universe, point::Point)
+function MapInPushAndDisplace!(universe::Universe, point::Point)
     universe.map[point.coord[1], point.coord[2], point.coord[3]] = point.index
 end
 
@@ -251,18 +286,28 @@ end
 
 
 function ReactInPushAndDisplace!(universe::Universe, points::Vector{Point})
+    
+
     defect = points[1].defect
     defectsToMerge = Defect[defect]
     for point in points
+        deleteNeighbors = Point[]
         for neighbor in point.neighbors
             if neighbor.defect.type != defect.type
-                delete!(universe, point)
-                delete!(universe, neighbor)
+                push!(deleteNeighbors, neighbor)
             elseif neighbor.defect.type == 1 && neighbor.defect !== defect &&  !(neighbor.defect in defectsToMerge)
                 push!(defectsToMerge, neighbor.defect)
             end
         end
+        if length(deleteNeighbors) > 0
+            neighbor = sample(deleteNeighbors)
+            delete!(universe, neighbor)
+            delete!(universe, point)
+        end
     end
+
+    
+
     if length(defectsToMerge) > 1 
         Merge!(universe, defectsToMerge)
     end
@@ -284,7 +329,7 @@ function MergeBasic!(universe::Universe, defects::Vector{Defect})
         for index in newPointIndexes
             universe.points[index].defect = defect
         end
-        deleteat!(universe.defects, findfirst(defect -> defect === defect, universe.defects))    
+        deleteat!(universe.defects, findfirst(x -> x === defects[i], universe.defects))   
     end
 end
 
@@ -317,110 +362,106 @@ end
 
 function NeighborInDelete!(universe::Universe, point::Point)
     for neighbor in point.neighbors
-        deleteat!(neighbor.neighbors, findfirst(point -> point === point, neighbor.neighbors))
+        deleteat!(neighbor.neighbors, findfirst(x -> x === point, neighbor.neighbors))
     end
 end
 
 function DefectInDelete!(universe::Universe, point::Point)
     defect = point.defect
     if length(defect.pointIndexes) == 1
-        deleteat!(universe.defects, findfirst(d -> d === defect, universe.defects))
+        deleteat!(universe.defects, findfirst(x -> x === defect, universe.defects))
     else
-        deleteat!(defect.pointIndexes, findfirst(pointIndex -> pointIndex == point.index, defect.pointIndexes))
+        deleteat!(defect.pointIndexes, findfirst(x -> x == point.index, defect.pointIndexes))
     end
 end
 
 
 function displace!(universe::Universe, points::Vector{Point}, newCoords::Matrix{Int16}) 
+    CleanMapInDisplace!(universe, points)
     CoordInPBC(universe, newCoords)
-    points, newCoords = OccupyInDisplace!(universe, points, newCoords)
-    BasicAndMapInDisplace!(universe, points, newCoords)
-    NeighborInDisplace!(universe, points)
+    alivePoints = Point[]
+    for point in points
+        BasicInDisplace!(points, newCoords)
+        isDeleted = OccupyInPushAndDisplace!(universe, point, point.defect.type)
+        if !isDeleted
+            MapInPushAndDisplace!(universe, point)
+            NeighborInDisplace!(universe, point)
+            push!(alivePoints, point)
+        end
+    end
+    points = alivePoints
     ReactInPushAndDisplace!(universe, points)
 end
 
-function OccupyInDisplace!(universe::Universe, points::Vector{Point}, newCoords::Matrix{Int16})
-    #never happen for vac
-    newIndexes = Int64[]
-    for i in 1:length(points)
-        newCoord = newCoords[i,:]
-        occupiedIndex = universe.map[newCoord[1], newCoord[2], newCoord[3]]
-        if occupiedIndex > 0
-            @assert(points[i].defect.type == 2, "vacancy point should not be occupied")
-            if universe.points[occupiedIndex].defect.type == 2
-                delete!(universe, universe.points[occupiedIndex])
-                delete!(universe, points[i])
-                push!(newIndexes, i)
-            end
-        end
-    end
-    points = points[newIndexes]
-    newCoords = newCoords[newIndexes,:]
-    points, newCoords
-end
-
-
-function BasicAndMapInDisplace!(universe::Universe, points::Vector{Point}, newCoords::Matrix{Int16})
-    for i in 1:length(points)
-        point = points[i]
-        universe.map[point.coord[1], point.coord[2], point.coord[3]] = 0
-        point.coord = newCoords[i,:]
-        universe.map[point.coord[1], point.coord[2], point.coord[3]] = point.index
-    end
-end
-
-function NeighborInDisplace!(universe::Universe, points::Vector{Point}) 
+function CleanMapInDisplace!(universe::Universe, points::Vector{Point})
     for point in points
-        oldNeighborIndexes = [point.index for point in point.neighbors]
-        neighborIndexes = UInt32[]
-        for x in Vector{Int16}([-1, 1])
-            for y in Vector{Int16}([-1, 1])
-                for z in Vector{Int16}([-1, 1])
-                    coord = point.coord + [x,y,z]
-                    CoordInPBC(universe, coord)
-                    neighborIndex = universe.map[coord[1], coord[2], coord[3]]
-                    if neighborIndex > 0
-                        push!(neighborIndexes, neighborIndex)
-                    end
+        universe.map[point.coord[1], point.coord[2], point.coord[3]] = UInt32(0)
+    end
+end
+
+function BasicInDisplace!(points::Vector{Point}, newCoords::Matrix{Int16})
+    for i in 1:length(points)
+        points[i].coord = newCoords[i, :]
+    end
+end
+
+
+function NeighborInDisplace!(universe::Universe, point::Point)
+    point.neighbors = Point[]
+    for neighbor in point.neighbors
+        deleteat!(neighbor.neighbors, findfirst(x -> x === point, neighbor.neighbors))
+    end
+    for x in Vector{Int16}([-1, 1])
+        for y in Vector{Int16}([-1, 1])
+            for z in Vector{Int16}([-1, 1])
+                coord = point.coord + [x,y,z]
+                CoordInPBC(universe, coord)
+                neighborIndex = universe.map[coord[1], coord[2], coord[3]]
+                if neighborIndex > 0
+                    neighbor = universe.points[neighborIndex]
+                    push!(point.neighbors, neighbor)
+                    push!(neighbor.neighbors, point)
                 end
             end
         end
-        if !issetequal(oldNeighborIndexes, neighborIndexes)
-            dropedNeighborIndexes = setdiff(oldNeighborIndexes, neighborIndexes)
-            newNeighborIndexes = setdiff(neighborIndexes, oldNeighborIndexes)
-            for dropedNeighborIndex in dropedNeighborIndexes
-                dropedNeighbor = universe.points[dropedNeighborIndex]
-                deleteat!(dropedNeighbor.neighbors, 
-                          findfirst(point -> point === point, dropedNeighbor.neighbors))
-            end
-            for newNeighborIndex in newNeighborIndexes
-                newNeighbor = universe.points[newNeighborIndex]
-                push!(newNeighbor.neighbors, point)
-            end
-            point.neighbors = [universe.points[index] for index in neighborIndexes]
-        end
     end
 end
 
 
-mapSize = Vector{UInt16}([100,100,100])
+mapSize = Vector{UInt16}([300,300,300])
 universe = Universe(mapSize)
 fileName = "/mnt/c/Users/xuke/Desktop/test.dump"
 RefreshFile(fileName)
 
+function test1!(universe::Universe)
+    point1 = Point(Vector{Int16}([11,11,11]))
+    point2 = Point(Vector{Int16}([12,12,12]))
+    point3 = Point(Vector{Int16}([13,13,13]))
+    point4 = Point(Vector{Int16}([14,14,14]))
+    point5 = Point(Vector{Int16}([15,15,15]))
+    #Base.push!(universe::Universe, points::Vector{Point}, type::UInt8, directionIndex::UInt8)
+    push!(universe, [point1, point2, point3, point4, point5], UInt8(2), UInt8(1))
+    #universe.nStep += 1
+    #Dump(universe, fileName, "a")
+    #universe.nStep += 1
+    #Dump(universe, fileName, "a")
+    # To do: add point on exsiting point
 
-point1 = Point(Vector{Int16}([1,1,1]))
-point2 = Point(Vector{Int16}([2,2,2]))
-point3 = Point(Vector{Int16}([3,3,3]))
-point4 = Point(Vector{Int16}([4,4,4]))
-point5 = Point(Vector{Int16}([5,5,5]))
-#Base.push!(universe::Universe, points::Vector{Point}, type::UInt8, directionIndex::UInt8)
-push!(universe, [point1, point2, point3], UInt8(1), UInt8(1))
-push!(universe, [point5], UInt8(1), UInt8(1))
-universe.nStep += 1
-Dump(universe, fileName, "a")
-push!(universe, [point4], UInt8(2), UInt8(5))
-universe.nStep += 1
-Dump(universe, fileName, "a")
+    point6 = Point(Vector{Int16}([13,13,13]))
+    push!(universe, [point6], UInt8(2), UInt8(1))
+    Dump(universe, fileName, "a")
+end
 
-# To do: add point on exsiting point
+function test2!(universe::Universe)
+    for i in 1:1000
+        universe.nStep += 1
+        point = Point(Vector{Int16}([150,150,150]))
+        push!(universe, [point], UInt8(1), UInt8(1))
+        if universe.nStep % 10 == 0
+            println("step: ", universe.nStep)
+            Dump(universe, fileName, "a")
+        end
+    end
+end
+test2!(universe)
+
