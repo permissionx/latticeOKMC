@@ -103,7 +103,7 @@ function Dump(xyzs::Matrix{Int16}, filename::String, nstep::Int64)
 end
 
 
-function HexPoints(N::Int64, centerCood::Vector{Int16}, direction::Vector{Int64})
+function HexPoints(N::Int64, centerCood::Vector{Int16}, direction::Vector{Int16})
     xyzs = Hex(N)
     for i in 1:3
         xyzs[:,i] *= direction[i]

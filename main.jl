@@ -1,12 +1,24 @@
 include("geometry.jl")
 using .Geometry
+using StatsBase
 
 
-const DIRECTION_DIR = ([[1,1,1],
-                        [1,1,-1],
-                        [1,-1,1],
-                        [1,-1,-1],
-                        [0,0,0]])
+const SIA_DIRECTIONS = ([Vector{Int16}([1,1,1]), 
+                         Vector{Int16}([1,1,-1]), 
+                         Vector{Int16}([1,-1,1]), 
+                         Vector{Int16}([1,-1,-1]),
+                         Vector{Int16}([0,0,0])])
+
+
+const DISPLACE_DIRECTIONS = ([Vector{Int16}([1,1,1]), 
+                              Vector{Int16}([1,1,-1]), 
+                              Vector{Int16}([1,-1,1]), 
+                              Vector{Int16}([1,-1,-1]),
+                              Vector{Int16}([-1,1,1]), 
+                              Vector{Int16}([-1,1,-1]), 
+                              Vector{Int16}([-1,-1,1]), 
+                              Vector{Int16}([-1,-1,-1])])
+
 const DEFECT_TYPE_NAMES = ["SIA", "Vac"]
 
 
@@ -80,8 +92,8 @@ function Dump(universe::Universe, fileName::String, mode::String)
     write(file, "1 $(universe.mapSize[3]+1)\n")
     write(file, "ITEM: ATOMS id type x y z\n")
     for defect in universe.defects
-        for i = 1:length(defect.pointIndexes)
-            point = universe.points[i]
+        for index in defect.pointIndexes
+            point = universe.points[index]
             write(file, 
             "$(point.index) $(defect.type) $(point.coord[1]) $(point.coord[2]) $(point.coord[3])\n")
         end
@@ -90,7 +102,7 @@ function Dump(universe::Universe, fileName::String, mode::String)
 end
 
 function Base.display(universe::Universe, defect::Defect)
-    direction = DIRECTION_DIR[defect.directionIndex]
+    direction = SIA_DIRECTIONS[defect.directionIndex]
     println("id: $(defect.id)  type: $(DEFECT_TYPE_NAME[defect.type])  \
             direction: ($(direction[1]) $(direction[2]) $(direction[3]))")
     for index in defect.pointIndexes
@@ -150,36 +162,60 @@ end
 
 function Base.push!(universe::Universe, points::Vector{Point}, type::UInt8, directionIndex::UInt8)
     # push defect by defect only 
+    # vac is alwyas pushed solely
+    skipedPoints = Point[]
     for point in points
-        if universe.map[point.coord[1], point.coord[2], point.coord[3]] == 0
-            BasicInPush!(universe, point)
+        positionIndex = universe.map[point.coord[1], point.coord[2], point.coord[3]]
+        BasicInPush!(universe, point)
+        if positionIndex == 0
             MapInPush!(universe, point)
             NeighborInPush!(universe, point)
         else
-            error("to do: push potin on existing point")
+            # three condition:
+            # vac to vac 
+            # vac to sia or sia to vac
+            # sia to sia
+            if universe.points[positionIndex].defect.type != type # for vac to sia
+                delete!(universe, occupiedPoint)
+                push!(skipedPoints, point)
+                # If SIA ocuupied by SIA/SIA cluster, it must be a neighbor, and thus it is goning to be merged. 
+            elseif type == 2 # for vac to vac
+                x = sample(Int16[1, -1])
+                y = sample(Int16[1, -1])
+                z = sample(Int16[1, -1])
+                while true
+                    x = sample([x*Int16(2), Int16(0)])
+                    y = sample([y*Int16(2), Int16(0)])
+                    if !(x == 0 && y == 0)
+                        z = sample([z*Int16(2), Int16(0)])
+                    end
+                    if x == 2 && y == 2 && z == 2
+                        x = Int16(1)
+                        y = Int16(1)
+                        z = Int16(1)
+                    end
+                    point.coord = [point.coord[1]+x, point.coord[2]+y, point.coord[3]+z]
+                    if universe.map[point.coord[1], point.coord[2], point.coord[3]] == 0
+                        MapInPush!(universe, point)
+                        NeighborInPush!(universe, point)
+                        break
+                    end
+                end
+            end
         end
     end
-    defect = DefectInPush!(universe, points, type, directionIndex)
-    ReactInPushAndDisplace!(universe, points)
+    points = [point for point in points if !(point in skipedPoints)]
+    if length(points) > 0
+        DefectInPush!(universe, points, type, directionIndex)
+        ReactInPushAndDisplace!(universe, points)
+    end
 end
 
-function BasicInPush!(universe::Universe, point::Point)  # "_" means containing
+function BasicInPush!(universe::Universe, point::Point)  
     push!(universe.points, point)
     point.index = length(universe.points)
     universe.pointNum += 1
 end
-
-function DefectInPush!(universe, points, type, directionIndex)
-    id = universe.maxDefectId + 1
-    universe.maxDefectId = id
-    pointIndexes = [point.index for point in points]
-    defect = Defect(id, type, directionIndex, pointIndexes)
-    [point.defect = defect for point in points]
-    push!(universe.defects, defect)
-    defect
-end
-
-
 
 function MapInPush!(universe::Universe, point::Point)
     universe.map[point.coord[1], point.coord[2], point.coord[3]] = point.index
@@ -201,6 +237,16 @@ function NeighborInPush!(universe::Universe, point::Point)
         end
     end
 end
+
+function DefectInPush!(universe::Universe, points::Vector{Point}, type::UInt8, directionIndex::UInt8)
+    id = universe.maxDefectId + 1
+    universe.maxDefectId = id
+    pointIndexes = [point.index for point in points]
+    defect = Defect(id, type, directionIndex, pointIndexes)
+    [point.defect = defect for point in points]
+    push!(universe.defects, defect)
+end
+
 
 function ReactInPushAndDisplace!(universe::Universe, points::Vector{Point})
     defect = points[1].defect
@@ -247,7 +293,7 @@ function Arrange!(universe::Universe, defect::Defect)
         aveCoord += point.coord
     end
     aveCoord = CoordInBCC(aveCoord / length(defect.pointIndexes))
-    coords = HexPoints(length(defect.pointIndexes), aveCoord, DIRECTION_DIR[defect.directionIndex])
+    coords = HexPoints(length(defect.pointIndexes), aveCoord, SIA_DIRECTIONS[defect.directionIndex])
     points = [universe.points[pointIndex] for pointIndex in defect.pointIndexes]
     displace!(universe, points, coords)
 end
@@ -281,7 +327,6 @@ function DefectInDelete!(universe::Universe, point::Point)
         deleteat!(defect.pointIndexes, findfirst(pointIndex -> pointIndex == point.index, defect.pointIndexes))
     end
 end
-
 
 
 function displace!(universe::Universe, points::Vector{Point}, newCoords::Matrix{Int16}) 
@@ -335,21 +380,24 @@ function NeighborInDisplace!(universe::Universe, points::Vector{Point})
 end
 
 
-
-mapSize = Vector{UInt16}([10,10,10])
+mapSize = Vector{UInt16}([100,100,100])
 universe = Universe(mapSize)
-fileName = "/mnt/c/Users/buaax/Desktop/test.dump"
+fileName = "/mnt/c/Users/xuke/Desktop/test.dump"
+RefreshFile(fileName)
 
 
 point1 = Point(Vector{Int16}([1,1,1]))
 point2 = Point(Vector{Int16}([2,2,2]))
 point3 = Point(Vector{Int16}([3,3,3]))
 point4 = Point(Vector{Int16}([4,4,4]))
+point5 = Point(Vector{Int16}([5,5,5]))
 #Base.push!(universe::Universe, points::Vector{Point}, type::UInt8, directionIndex::UInt8)
-push!(universe, [point1, point3, point2], UInt8(1), UInt8(1))
-push!(universe, [point4], UInt8(1), UInt8(1))
-
-RefreshFile(fileName)
+push!(universe, [point1, point2, point3], UInt8(1), UInt8(1))
+push!(universe, [point5], UInt8(1), UInt8(1))
+universe.nStep += 1
+Dump(universe, fileName, "a")
+push!(universe, [point4], UInt8(2), UInt8(5))
+universe.nStep += 1
 Dump(universe, fileName, "a")
 
 # To do: add point on exsiting point
