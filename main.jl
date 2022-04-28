@@ -163,8 +163,9 @@ end
 function Base.push!(universe::Universe, points::Vector{Point}, type::UInt8, directionIndex::UInt8)
     # push defect by defect only 
     # vac is alwyas pushed solely
-    skipedPoints = Point[]
-    for point in points
+    newIndexes = Int64[]
+    for i in 1:length(points)
+        point = points[i]
         positionIndex = universe.map[point.coord[1], point.coord[2], point.coord[3]]
         BasicInPush!(universe, point)
         if positionIndex == 0
@@ -177,7 +178,7 @@ function Base.push!(universe::Universe, points::Vector{Point}, type::UInt8, dire
             # sia to sia
             if universe.points[positionIndex].defect.type != type # for vac to sia
                 delete!(universe, occupiedPoint)
-                push!(skipedPoints, point)
+                push!(newIndexes, i)
                 # If SIA ocuupied by SIA/SIA cluster, it must be a neighbor, and thus it is goning to be merged. 
             elseif type == 2 # for vac to vac
                 x = sample(Int16[1, -1])
@@ -204,12 +205,13 @@ function Base.push!(universe::Universe, points::Vector{Point}, type::UInt8, dire
             end
         end
     end
-    points = [point for point in points if !(point in skipedPoints)]
+    points = points[newIndexes]
     if length(points) > 0
         DefectInPush!(universe, points, type, directionIndex)
         ReactInPushAndDisplace!(universe, points)
     end
 end
+
 
 function BasicInPush!(universe::Universe, point::Point)  
     push!(universe.points, point)
@@ -331,9 +333,30 @@ end
 
 function displace!(universe::Universe, points::Vector{Point}, newCoords::Matrix{Int16}) 
     CoordInPBC(universe, newCoords)
+    points, newCoords = OccupyInDisplace!(universe, points, newCoords)
     BasicAndMapInDisplace!(universe, points, newCoords)
     NeighborInDisplace!(universe, points)
     ReactInPushAndDisplace!(universe, points)
+end
+
+function OccupyInDisplace!(universe::Universe, points::Vector{Point}, newCoords::Matrix{Int16})
+    #never happen for vac
+    newIndexes = Int64[]
+    for i in 1:length(points)
+        newCoord = newCoords[i,:]
+        occupiedIndex = universe.map[newCoord[1], newCoord[2], newCoord[3]]
+        if occupiedIndex > 0
+            @assert(points[i].defect.type == 2, "vacancy point should not be occupied")
+            if universe.points[occupiedIndex].defect.type == 2
+                delete!(universe, universe.points[occupiedIndex])
+                delete!(universe, points[i])
+                push!(newIndexes, i)
+            end
+        end
+    end
+    points = points[newIndexes]
+    newCoords = newCoords[newIndexes,:]
+    points, newCoords
 end
 
 

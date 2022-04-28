@@ -1,8 +1,6 @@
-function A(b,a)
-    a[1] += b
-end
+using Plots
 
-a = [3]
+x = [0:0.1:pi;]
+y = sin.(a)
+plot(x,y)
 
-A(a,4)
-println(a)
