@@ -272,28 +272,27 @@ end
 function ReactInPushAndDisplace!(universe::Universe, points::Vector{Point})
     defect = points[1].defect
     defectsToMerge = Defect[defect]
-    alivePointIndexes = Int64[]
-    for i in 1:length(points)
-        point = points[i]
+    for point in points
         deleteNeighbors = Point[]
+        isDeleted = false
         for neighbor in point.neighbors
             if neighbor.defect.type != defect.type
                 push!(deleteNeighbors, neighbor)
+                isDeleted = true
+            elseif neighbor.defect.type == 1 && !(isDeleted) && neighbor.defect !== defect &&  !(neighbor.defect in defectsToMerge)
+                push!(defectsToMerge, neighbor.defect)
             end
         end
         if length(deleteNeighbors) > 0
             neighbor = sample(deleteNeighbors)
             delete!(universe, neighbor)
             delete!(universe, point)
-        else
-            push!(alivePointIndexes, i)
         end
     end
-    if length(defectsToMerge) > 1 
+    if length(defectsToMerge) > 1
         Merge!(universe, defectsToMerge)
     end
 end
-
 
 function Merge!(universe::Universe, defects::Vector{Defect}) 
     # merge defects to defects[1]
