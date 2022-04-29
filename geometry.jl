@@ -133,10 +133,12 @@ end
 
 function HexPoints(N::Int64, centerCood::Vector{Float64}, direction::Vector{Int32})
     xyzs = Hex(N)
+    for i in 1:3
+        xyzs[:,i] *= direction[i]
+    end
     nowCenter = [mean(xyzs[:,i]) for i in 1:3]
     deltaDisplace = CoordInBCC(centerCood - nowCenter)
     for i in 1:3
-        xyzs[:,i] *= direction[i]
         xyzs[:,i] .+= deltaDisplace[i]
     end
     xyzs
