@@ -167,16 +167,12 @@ function Base.push!(universe::Universe, points::Vector{Point}, type::UInt8, dire
     # push defect by defect only 
     # vac is alwyas pushed solely
     alivePoints = Point[]
-    vacNeighborses = Point[]
     for point in points
         isDeleted = OccupyInPushAndDisplace!(universe, point ,type)
         if !isDeleted
             BasicInPush!(universe, point)
             MapInPushAndDisplace!(universe, point)
-            vacNeighbors = NeighborInPush!(universe, point)
-            if type == 2
-                vacNeighborses = vcat(vacNeighborses, vacNeighbors)
-            end
+            NeighborInPush!(universe, point)
             push!(alivePoints, point)
         end
     end
@@ -184,17 +180,13 @@ function Base.push!(universe::Universe, points::Vector{Point}, type::UInt8, dire
     if length(points) > 0
         DefectInPush!(universe, points, type, directionIndex)
         ReactInPushAndDisplace!(universe, points)
-        if type == 2
-            vacNeighborses = vcat(vacNeighborses, points)
-            unique!(vacNeighborses)
-            for point in vacNeighborses
-                RefreshVacEvent!(point.defect)
-            end
-        end
     end
 end
 
 function RefreshVacEvent!(defect::Defect)
+end
+
+function RefreshSIAEvent!(defect::Defect)
 end
 
 
@@ -255,7 +247,6 @@ end
 
 
 function NeighborInPush!(universe::Universe, point::Point)
-    vacNeighbors = Point[]
     for x in Vector{Int32}([-1, 1])
         for y in Vector{Int32}([-1, 1])
             for z in Vector{Int32}([-1, 1])
@@ -266,14 +257,10 @@ function NeighborInPush!(universe::Universe, point::Point)
                     neighbor = universe.points[neighborIndex]
                     push!(point.neighbors, neighbor)
                     push!(neighbor.neighbors, point)
-                    if point.type == 2 && neighbor.type == 2
-                        push!(vacNeighbors, neighbor)
-                    end
                 end
             end
         end
     end 
-    vacNeighbors
 end
 
 
@@ -287,6 +274,7 @@ function DefectInPush!(universe::Universe, points::Vector{Point}, type::UInt8, d
         push!(defect, point)
     end
     push!(universe.defects, defect)
+    RefreshSIAEvent!(defect)
 end
 
 function Base.push!(defect::Defect, point::Point)
@@ -328,6 +316,7 @@ function Merge!(universe::Universe, defects::Vector{Defect})
     # merge defects to defects[1]
     defect = MergeBasic!(universe, defects)
     Arrange!(universe, defect)
+    RefreshSIAEvent!(defect)
 end
 
 
