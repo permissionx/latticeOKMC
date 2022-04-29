@@ -20,7 +20,6 @@ const DISPLACE_DIRECTIONS = ([Vector{Int32}([1,1,1]),
                               Vector{Int32}([-1,-1,1]), 
                               Vector{Int32}([-1,-1,-1])])
 
-                              
 const DEFECT_TYPE_NAMES = ["SIA", "Vac"]
 
 
@@ -37,17 +36,18 @@ mutable struct Point
     coord::Vector{Int32}
     defect::Defect
     neighbors::Vector{Point}
+    type::UInt8
     function Point(coord)
         pointIndexes = UInt32[]
         defect = Defect(UInt32(0), UInt8(0), UInt8(0), pointIndexes)
         neighbors = Vector{Point}[]
-        new(0, coord, defect, neighbors)
+        new(0, coord, defect, neighbors, UInt8(0))
     end
 end
 
 
 function Base.display(point::Point)
-    print("$(point.index) $(DEFECT_TYPE_NAMES[point.defect.type]) $(point.defect.id) \
+    print("$(point.index) $(DEFECT_TYPE_NAMES[point.type]) $(point.defect.id) \
           ($(point.coord[1]) $(point.coord[2]) $(point.coord[3]))")
     println()
 end
@@ -167,12 +167,16 @@ function Base.push!(universe::Universe, points::Vector{Point}, type::UInt8, dire
     # push defect by defect only 
     # vac is alwyas pushed solely
     alivePoints = Point[]
+    vacNeighborses = Point[]
     for point in points
         isDeleted = OccupyInPushAndDisplace!(universe, point ,type)
         if !isDeleted
             BasicInPush!(universe, point)
             MapInPushAndDisplace!(universe, point)
-            NeighborInPush!(universe, point)
+            vacNeighbors = NeighborInPush!(universe, point)
+            if type == 2
+                vacNeighborses = vcat(vacNeighborses, vacNeighbors)
+            end
             push!(alivePoints, point)
         end
     end
@@ -180,7 +184,17 @@ function Base.push!(universe::Universe, points::Vector{Point}, type::UInt8, dire
     if length(points) > 0
         DefectInPush!(universe, points, type, directionIndex)
         ReactInPushAndDisplace!(universe, points)
+        if type == 2
+            vacNeighborses = vcat(vacNeighborses, points)
+            unique!(vacNeighborses)
+            for point in vacNeighborses
+                RefreshVacEvent!(point.defect)
+            end
+        end
     end
+end
+
+function RefreshVacEvent!(defect::Defect)
 end
 
 
@@ -192,7 +206,7 @@ function OccupyInPushAndDisplace!(universe::Universe, point::Point, type::UInt8)
         # vac to sia or sia to vac
         # sia to sia
         occupiedPoint = universe.points[positionIndex]
-        if occupiedPoint.defect.type != type # for vac to sia
+        if occupiedPoint.type != type # for vac to sia
             delete!(universe, occupiedPoint)
             return true
             # If SIA ocuupied by SIA/SIA cluster, it must be a neighbor, and thus it is goning to be merged. 
@@ -241,6 +255,7 @@ end
 
 
 function NeighborInPush!(universe::Universe, point::Point)
+    vacNeighbors = Point[]
     for x in Vector{Int32}([-1, 1])
         for y in Vector{Int32}([-1, 1])
             for z in Vector{Int32}([-1, 1])
@@ -251,11 +266,16 @@ function NeighborInPush!(universe::Universe, point::Point)
                     neighbor = universe.points[neighborIndex]
                     push!(point.neighbors, neighbor)
                     push!(neighbor.neighbors, point)
+                    if point.type == 2 && neighbor.type == 2
+                        push!(vacNeighbors, neighbor)
+                    end
                 end
             end
         end
-    end
+    end 
+    vacNeighbors
 end
+
 
 
 function DefectInPush!(universe::Universe, points::Vector{Point}, type::UInt8, directionIndex::UInt8)
@@ -263,8 +283,15 @@ function DefectInPush!(universe::Universe, points::Vector{Point}, type::UInt8, d
     universe.maxDefectId = id
     pointIndexes = [point.index for point in points]
     defect = Defect(id, type, directionIndex, pointIndexes)
-    [point.defect = defect for point in points]
+    for point in points
+        push!(defect, point)
+    end
     push!(universe.defects, defect)
+end
+
+function Base.push!(defect::Defect, point::Point)
+    point.defect = defect
+    point.type = defect.type
 end
 
 
@@ -274,7 +301,7 @@ function ReactInPushAndDisplace!(universe::Universe, points::Vector{Point})
     for point in points
         deleteNeighbors = Point[]
         for neighbor in point.neighbors
-            if neighbor.defect.type != defect.type
+            if neighbor.type != defect.type
                 push!(deleteNeighbors, neighbor)
             end
         end
@@ -312,7 +339,7 @@ function MergeBasic!(universe::Universe, defects::Vector{Defect})
             newPointIndexes = defect.pointIndexes
             largeDefect.pointIndexes = vcat(largeDefect.pointIndexes, newPointIndexes)
             for index in newPointIndexes
-                universe.points[index].defect = largeDefect
+                push!(largeDefect, universe.points[index])
             end
             deleteat!(universe.defects, findfirst(x -> x === defect, universe.defects))   
         end
@@ -355,6 +382,9 @@ end
 function NeighborInDelete!(universe::Universe, point::Point)
     for neighbor in point.neighbors
         deleteat!(neighbor.neighbors, findfirst(x -> x === point, neighbor.neighbors))
+        if point.type == 2 && neighbor.type == 2
+            RefreshVacEvent!(neighbor.defect)
+        end
     end
 end
 
@@ -375,7 +405,7 @@ function displace!(universe::Universe, points::Vector{Point}, newCoords::Matrix{
     alivePoints = Point[]  
     BasicInDisplace!(points, newCoords)  
     for point in points
-        isDeleted = OccupyInPushAndDisplace!(universe, point, point.defect.type)
+        isDeleted = OccupyInPushAndDisplace!(universe, point, point.type)
         if !isDeleted
             MapInPushAndDisplace!(universe, point)
             NeighborInDisplace!(universe, point)
