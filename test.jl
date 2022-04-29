@@ -1,6 +1,4 @@
-using Plots
-
-x = [0:0.1:pi;]
-y = sin.(a)
-plot(x,y)
-
+module A
+using StatsBase
+mean([1,2,3])
+end
