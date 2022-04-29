@@ -5,7 +5,7 @@ using Distributions
 include("geometry.jl")
 using .Geometry
 include("reaction.jl")
-include("behavior.jl")
+include("KMC.jl")
 
 function test1()
     mapSize = Vector{UInt32}([300,300,300])
@@ -33,13 +33,13 @@ end
 function test2()
     mapSize = Vector{UInt32}([300,300,300])
     universe = Universe(mapSize)
-    fileName = "/mnt/c/Users/xuke/Desktop/test2.dump"
+    fileName = "/mnt/c/Users/buaax/Desktop/test2.dump"
     RefreshFile(fileName)
     for i in 1:1000
         universe.nStep += 1
         println("step: ", universe.nStep)
         point = Point(Vector{Int32}([150,150,150]))
-        push!(universe, [point], UInt8(1), UInt8(1))
+        push!(universe, [point], UInt8(2), UInt8(1))
         if universe.nStep % 10 == 0
             Dump(universe, fileName, "a")
         end
@@ -70,10 +70,11 @@ function test3()
     universe
 end
 
-
-filename = "/mnt/c/Users/xuke/Desktop/disocatonloop.dump"
-RefreshFile(filename)
-mapSize = Vector{UInt32}([300,300,300])
-universe = Universe(mapSize)
-InputDislocationLoop(universe, 100, Vector{Float64}([150,150,150]), UInt8(2))
-Dump(universe, filename, "a")
+function test4()
+    filename = "/mnt/c/Users/xuke/Desktop/disocatonloop.dump"
+    RefreshFile(filename)
+    mapSize = Vector{UInt32}([300,300,300])
+    universe = Universe(mapSize)
+    InputDislocationLoop(universe, 100, Vector{Float64}([150,150,150]), UInt8(2))
+    Dump(universe, filename, "a")
+end

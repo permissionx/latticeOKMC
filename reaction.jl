@@ -20,6 +20,21 @@ const DISPLACE_DIRECTIONS = ([Vector{Int32}([1,1,1]),
                               Vector{Int32}([-1,-1,1]), 
                               Vector{Int32}([-1,-1,-1])])
 
+const NEIGHBOR_VECTORS = ([Vector{Int32}([2,0,0]), 
+                           Vector{Int32}([-2,0,0]), 
+                           Vector{Int32}([0,2,0]), 
+                           Vector{Int32}([0,-2,0]), 
+                           Vector{Int32}([0,0,2]), 
+                           Vector{Int32}([0,0,-2]),
+                           Vector{Int32}([1,1,1]), 
+                           Vector{Int32}([1,1,-1]), 
+                           Vector{Int32}([1,-1,1]), 
+                           Vector{Int32}([1,-1,-1]),
+                           Vector{Int32}([-1,1,1]), 
+                           Vector{Int32}([-1,1,-1]), 
+                           Vector{Int32}([-1,-1,1]), 
+                           Vector{Int32}([-1,-1,-1])])
+
 const DEFECT_TYPE_NAMES = ["SIA", "Vac"]
 
 
@@ -206,22 +221,15 @@ function OccupyInPushAndDisplace!(universe::Universe, point::Point, type::UInt8)
             x0 = sample(Int32[1, -1])
             y0 = sample(Int32[1, -1])
             z0 = sample(Int32[1, -1])
+            displaceVectors = [Int32[2*x0,0,0],
+                               Int32[0,2*y0,0],
+                               Int32[0,0,2*z0],
+                               Int32[1*z0,1*y0,1*z0]]
             count = 0
             while true
                 count += 1
-                x = sample([x0*Int32(2), Int32(0)], Weights([1,1]))
-                y = sample([y0*Int32(2), Int32(0)], Weights([1,1]))
-                if x == 0 && y == 0
-                    z = z0*Int32(2)
-                else
-                    z = sample([z0*Int32(2), Int32(0)], Weights([1,1]))
-                end
-                if x == 2 && y == 2 && z == 2
-                    x = Int32(1)
-                    y = Int32(1)
-                    z = Int32(1)
-                end
-                point.coord = [point.coord[1]+x, point.coord[2]+y, point.coord[3]+z]
+                displaceVector = sample(displaceVectors)
+                point.coord += displaceVector
                 PBCCoord!(universe, point.coord)
                 if universe.map[point.coord[1], point.coord[2], point.coord[3]] == 0
                     break
@@ -247,20 +255,16 @@ end
 
 
 function NeighborInPush!(universe::Universe, point::Point)
-    for x in Vector{Int32}([-1, 1])
-        for y in Vector{Int32}([-1, 1])
-            for z in Vector{Int32}([-1, 1])
-                coord = point.coord + [x,y,z]
-                PBCCoord!(universe, coord)
-                neighborIndex = universe.map[coord[1], coord[2], coord[3]]
-                if neighborIndex > 0
-                    neighbor = universe.points[neighborIndex]
-                    push!(point.neighbors, neighbor)
-                    push!(neighbor.neighbors, point)
-                end
-            end
+    for neighborVector in NEIGHBOR_VECTORS
+        coord = point.coord + neighborVector
+        PBCCoord!(universe, coord)
+        neighborIndex = universe.map[coord[1], coord[2], coord[3]]
+        if neighborIndex > 0
+            neighbor = universe.points[neighborIndex]
+            push!(point.neighbors, neighbor)
+            push!(neighbor.neighbors, point)
         end
-    end 
+    end
 end
 
 
@@ -299,15 +303,14 @@ function ReactInPushAndDisplace!(universe::Universe, points::Vector{Point})
             delete!(universe, point)
             continue
         end
-        if defect.type == 1
-            for neighbor in point.neighbors
-                if neighbor.defect !== defect &&  !(neighbor.defect in defectsToMerge)
-                    push!(defectsToMerge, neighbor.defect)
-                end
+        for neighbor in point.neighbors
+            if neighbor.defect !== defect 
+                push!(defectsToMerge, neighbor.defect)
             end
         end
     end
     if length(defectsToMerge) > 1
+        unique!(defectsToMerge)
         Merge!(universe, defectsToMerge)
     end
 end
@@ -315,8 +318,10 @@ end
 function Merge!(universe::Universe, defects::Vector{Defect}) 
     # merge defects to defects[1]
     defect = MergeBasic!(universe, defects)
-    Arrange!(universe, defect)
-    RefreshSIAEvent!(defect)
+    if defect.type == UInt8(1)
+        Arrange!(universe, defect)
+        RefreshSIAEvent!(defect)
+    end
 end
 
 
@@ -351,14 +356,14 @@ end
 
 
 function Base.delete!(universe::Universe, point::Point)
-    BasicInDelete!(universe, point)
+    BasicInDelete!(universe)
     MapInDelete!(universe, point)
-    NeighborInDelete!(universe, point)
+    NeighborInDelete!(point)
     DefectInDelete!(universe, point)
 end
 
 
-function BasicInDelete!(universe::Universe, point::Point) 
+function BasicInDelete!(universe::Universe) 
     universe.pointNum -= 1
 end
 
@@ -368,7 +373,7 @@ function MapInDelete!(universe::Universe, point::Point)
 end
 
 
-function NeighborInDelete!(universe::Universe, point::Point)
+function NeighborInDelete!(point::Point)
     for neighbor in point.neighbors
         deleteat!(neighbor.neighbors, findfirst(x -> x === point, neighbor.neighbors))
         if point.type == 2 && neighbor.type == 2
@@ -399,6 +404,8 @@ function displace!(universe::Universe, points::Vector{Point}, newCoords::Matrix{
             MapInPushAndDisplace!(universe, point)
             NeighborInDisplace!(universe, point)
             push!(alivePoints, point)
+        else
+            delete!(universe, point)
         end
     end
     points = alivePoints
@@ -425,21 +432,16 @@ function NeighborInDisplace!(universe::Universe, point::Point)
     for neighbor in point.neighbors
         deleteat!(neighbor.neighbors, findfirst(x -> x === point, neighbor.neighbors))
     end
-    for x in Vector{Int32}([-1, 1])
-        for y in Vector{Int32}([-1, 1])
-            for z in Vector{Int32}([-1, 1])
-                coord = point.coord + [x,y,z]
-                PBCCoord!(universe, coord)
-                neighborIndex = universe.map[coord[1], coord[2], coord[3]]
-                if neighborIndex > 0
-                    neighbor = universe.points[neighborIndex]
-                    push!(point.neighbors, neighbor)
-                    push!(neighbor.neighbors, point)
-                end
-            end
+    for neighborVector in NEIGHBOR_VECTORS
+        coord = point.coord + neighborVector
+        PBCCoord!(universe, coord)
+        neighborIndex = universe.map[coord[1], coord[2], coord[3]]
+        if neighborIndex > 0
+            neighbor = universe.points[neighborIndex]
+            push!(point.neighbors, neighbor)
+            push!(neighbor.neighbors, point)
         end
     end
 end
-
 
 
