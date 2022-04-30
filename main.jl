@@ -7,11 +7,7 @@ using .Geometry
 include("reaction.jl")
 include("KMC.jl")
 
-function test1()
-    mapSize = Vector{UInt32}([300,300,300])
-    universe = Universe(mapSize)
-    fileName = "/mnt/c/Users/xuke/Desktop/test1.dump"
-    RefreshFile(fileName)
+function test1(universe::Universe)
     point1 = Point(Vector{Int32}([11,11,11]))
     point2 = Point(Vector{Int32}([12,12,12]))
     point3 = Point(Vector{Int32}([13,13,13]))
@@ -30,11 +26,7 @@ function test1()
 end
 
 
-function test2()
-    mapSize = Vector{UInt32}([300,300,300])
-    universe = Universe(mapSize)
-    fileName = "/mnt/c/Users/buaax/Desktop/test2.dump"
-    RefreshFile(fileName)
+function test2(universe::Universe)
     for i in 1:1000
         universe.nStep += 1
         println("step: ", universe.nStep)
@@ -48,14 +40,10 @@ function test2()
 end
 
 
-function test3()
-    mapSize = Vector{UInt32}([300,300,300])
-    universe = Universe(mapSize)
-    fileName = "/mnt/c/Users/xuke/Desktop/test3.dump"
-    RefreshFile(fileName)
-    for i in 1:10000
+function test3(universe::Universe)
+    for i in 1:100
         universe.nStep += 1
-        println("step: ", universe.nStep)
+        #println("step: ", universe.nStep)
         coord = rand(Normal(150, 15), 3)
         coord = Geometry.CoordInBCC(coord)
         PBCCoord!(universe, coord)
@@ -67,14 +55,14 @@ function test3()
             Dump(universe, fileName, "a")
         end
     end
-    universe
 end
 
-function test4()
-    filename = "/mnt/c/Users/xuke/Desktop/disocatonloop.dump"
-    RefreshFile(filename)
-    mapSize = Vector{UInt32}([300,300,300])
-    universe = Universe(mapSize)
+function test4(universe::Universe)
     InputDislocationLoop(universe, 100, Vector{Float64}([150,150,150]), UInt8(2))
     Dump(universe, filename, "a")
 end
+
+mapSize = Vector{UInt32}([300,300,300])
+universe = Universe(mapSize)
+fileName = "/mnt/c/Users/xuke/Desktop/test3.dump"
+RefreshFile(fileName)
