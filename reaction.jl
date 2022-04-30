@@ -2,7 +2,6 @@ using .Geometry
 using StatsBase
 using Random
 using Distributions
-Random.seed!(1234)
 
 
 const SIA_DIRECTIONS = ([Vector{Int32}([1,1,1]), 
@@ -58,22 +57,23 @@ mutable struct Point
     index::UInt32   # name and index (index nerver changed)
     coord::Vector{Int32}
     defect::Defect
+    object::Object
     neighbors::Vector{Point}
     type::UInt8
-    object::Object
+    debug_alive::Bool
     function Point(coord)
         pointIndexes = UInt32[]
         defect = Defect(UInt32(0), UInt8(0), UInt8(0), pointIndexes)
         object = Object(UInt32(0), UInt8(0), UInt8(0), pointIndexes)
         neighbors = Vector{Point}[]
-        new(0, coord, defect, neighbors, UInt8(0), object)
+        new(0, coord, defect, object, neighbors, UInt8(0), true)
     end
 end
 
 
 
 function Base.display(point::Point)
-    print("$(point.index) $(DEFECT_TYPE_NAMES[point.type]) $(point.defect.index) \
+    print("$(point.index) $(DEFECT_TYPE_NAMES[point.type]) $(point.defect.index) $(point.object.index) \
           ($(point.coord[1]) $(point.coord[2]) $(point.coord[3]))")
     println()
 end
@@ -81,7 +81,7 @@ end
 
 function Base.display(points::Vector{Point})
     println("$(length(points))-point array:")
-    println("id type defect (x y z)")  # id is index
+    println("id type defect object (x y z)")  # id is index
     for point in points
         display(point)
     end
@@ -156,12 +156,12 @@ function Dump(universe::Universe, fileName::String, mode::String)
     write(file, "1 $(universe.mapSize[1]+1)\n")
     write(file, "1 $(universe.mapSize[2]+1)\n")
     write(file, "1 $(universe.mapSize[3]+1)\n")
-    write(file, "ITEM: ATOMS id type defect x y z\n")
+    write(file, "ITEM: ATOMS id type defect object x y z\n")
     for defect in universe.defects
         for index in defect.pointIndexes
             point = universe.points[index]
             write(file, 
-            "$(point.index) $(defect.type) $(defect.index) $(point.coord[1]) $(point.coord[2]) $(point.coord[3])\n")
+            "$(point.index) $(defect.type) $(defect.index) $(point.object.index) $(point.coord[1]) $(point.coord[2]) $(point.coord[3])\n")
         end
     end
     close(file)
@@ -216,24 +216,7 @@ function Base.push!(universe::Universe, points::Vector{Point}, type::UInt8, dire
     end
 end
 
-function ObjectInPushVac(universe::Universe, point::Point)
-    universe.maxObjectIndex += 1
-    index = universe.maxObjectIndex
-    pointIndexes = [point.index]
-    object = Object(index, UInt8(2), UInt8(1), pointIndexes)
-    point.object = object
-    push!(universe.objects, object)
-end
 
-function ObjectInPushSIA(universe::Universe, points::Vector{Point}, defect::Defect)
-    universe.maxObjectIndex += 1
-    index = universe.maxObjectIndex
-    object = Object(index, UInt8(1), defect.directionIndex, defect.pointIndexes)
-    for point in points
-        point.object = object
-    end
-    push!(universe.objects, object)
-end
 
 
 
@@ -307,15 +290,30 @@ function DefectInPush!(universe::Universe, points::Vector{Point}, type::UInt8, d
     pointIndexes = [point.index for point in points]
     defect = Defect(index, type, directionIndex, pointIndexes)
     for point in points
-        push!(defect, point)
+        point.defect = defect
+        point.type = defect.type
     end
     push!(universe.defects, defect)
     defect
 end
 
-function Base.push!(defect::Defect, point::Point)
-    point.defect = defect
-    point.type = defect.type
+function ObjectInPushVac(universe::Universe, point::Point)
+    universe.maxObjectIndex += 1
+    index = universe.maxObjectIndex
+    pointIndexes = [point.index]
+    object = Object(index, UInt8(2), UInt8(1), pointIndexes)
+    point.object = object
+    push!(universe.objects, object)
+end
+
+function ObjectInPushSIA(universe::Universe, points::Vector{Point}, defect::Defect)
+    universe.maxObjectIndex += 1
+    index = universe.maxObjectIndex
+    object = Object(index, UInt8(1), defect.directionIndex, defect.pointIndexes)
+    for point in points
+        point.object = object
+    end
+    push!(universe.objects, object)
 end
 
 
@@ -359,20 +357,29 @@ end
 function DefectAndObjectInMerge!(universe::Universe, defects::Vector{Defect})
     _,index = findmax(x->length(x.pointIndexes), defects)
     largeDefect = defects[index]
+    type = largeDefect.type
+    if type == UInt8(1)
+        largeObject = universe.points[largeDefect.pointIndexes[1]].object
+    end
     for defect in defects
         if !(defect === largeDefect)
             newPointIndexes = defect.pointIndexes
             largeDefect.pointIndexes = vcat(largeDefect.pointIndexes, newPointIndexes)
+                object = universe.points[defect.pointIndexes[1]].object
             for index in newPointIndexes
-                universe.points[index] = largeDefect
+                point = universe.points[index]
+                point.defect = largeDefect
+                if type == UInt8(1)
+                    point.object = largeObject
+                end
             end
             deleteat!(universe.defects, findfirst(x -> x === defect, universe.defects))  
-            object = universe.points[defect.pointIndexes[1]].object
-            deleteat!(universe.objects, findfirst(x -> x === object, universe.objects))  
+            if type == UInt8(1)
+                deleteat!(universe.objects, findfirst(x -> x === object, universe.objects)) 
+            end 
         end
     end
-    if largeDefect.type == UInt8(1)
-        largeObject = universe.points[largeDefect.pointIndexes[1]].object
+    if type == UInt8(1)
         largeObject.pointIndexes = largeDefect.pointIndexes
     end
     largeDefect
@@ -397,6 +404,7 @@ function Base.delete!(universe::Universe, point::Point)
     MapInDelete!(universe, point)
     NeighborInDelete!(point)
     DefectAndObjectInDelete!(universe, point)
+    point.debug_alive = false
 end
 
 
@@ -420,14 +428,19 @@ end
 function DefectAndObjectInDelete!(universe::Universe, point::Point)
     defect = point.defect
     object = point.object
-    if length(defect.pointIndexes) == UInt8(1)
+    if length(defect.pointIndexes) == 1
         deleteat!(universe.defects, findfirst(x -> x === defect, universe.defects))
         deleteat!(universe.objects, findfirst(x -> x === object, universe.objects))
     else
         deleteat!(defect.pointIndexes, findfirst(x -> x == point.index, defect.pointIndexes))
-        if point.type == UInt8(2)
+        if point.type == UInt8(1)
+            object.pointIndexes = defect.pointIndexes
+        else
             deleteat!(universe.objects, findfirst(x -> x === object, universe.objects))
         end
+    end
+    if point.type == UInt8(1)
+        @assert(object.pointIndexes == defect.pointIndexes, "point indexes not equal")
     end
 end
 
@@ -439,6 +452,7 @@ function displace!(universe::Universe, points::Vector{Point}, newCoords::Matrix{
     alivePoints = Point[]  
     BasicInDisplace!(points, newCoords)  
     for point in points
+        @assert(point.debug_alive, "point not alive being displaced")
         isDeleted = OccupyInPushAndDisplace!(universe, point, point.type)
         if !isDeleted
             MapInPushAndDisplace!(universe, point)
@@ -468,10 +482,10 @@ end
 
 
 function NeighborInDisplace!(universe::Universe, point::Point)
-    point.neighbors = Point[]
     for neighbor in point.neighbors
         deleteat!(neighbor.neighbors, findfirst(x -> x === point, neighbor.neighbors))
     end
+    point.neighbors = Point[]
     for neighborVector in NEIGHBOR_VECTORS
         coord = point.coord + neighborVector
         PBCCoord!(universe, coord)

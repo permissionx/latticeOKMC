@@ -1,6 +1,7 @@
 using StatsBase
 using Random
 using Distributions
+Random.seed!(1234)
 
 include("geometry.jl")
 using .Geometry
@@ -41,15 +42,15 @@ end
 
 
 function test3(universe::Universe)
-    for i in 1:100
+    for i in 1:10000
         universe.nStep += 1
-        #println("step: ", universe.nStep)
+        println("step: ", universe.nStep)
         coord = rand(Normal(150, 15), 3)
         coord = Geometry.CoordInBCC(coord)
         PBCCoord!(universe, coord)
         point = Point(coord)
-        type = sample(UInt8(1):UInt8(1))
-        direction = sample(UInt8(4):UInt8(4))
+        type = sample(UInt8(1):UInt8(2))
+        direction = sample(UInt8(1):UInt8(4))
         push!(universe, [point], type, direction)
         if universe.nStep % 100 == 0
             Dump(universe, fileName, "a")
@@ -62,7 +63,10 @@ function test4(universe::Universe)
     Dump(universe, filename, "a")
 end
 
+
 mapSize = Vector{UInt32}([300,300,300])
 universe = Universe(mapSize)
 fileName = "/mnt/c/Users/xuke/Desktop/test3.dump"
 RefreshFile(fileName)
+
+test3(universe)
