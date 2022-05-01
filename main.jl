@@ -28,12 +28,12 @@ end
 
 
 function test2(universe::Universe)
-    for i in 1:1000
+    for i in 1:10
         universe.nStep += 1
         println("step: ", universe.nStep)
         point = Point(Vector{Int32}([150,150,150]))
         push!(universe, [point], UInt8(2), UInt8(1))
-        if universe.nStep % 10 == 0
+        if universe.nStep % 1 == 0
             Dump(universe, fileName, "a")
         end
     end
@@ -45,7 +45,7 @@ function test3(universe::Universe)
     for i in 1:10000
         universe.nStep += 1
         println("step: ", universe.nStep)
-        coord = rand(Normal(150, 15), 3)
+        coord = rand(Normal(150, 1), 3)
         coord = Geometry.CoordInBCC(coord)
         PBCCoord!(universe, coord)
         point = Point(coord)
@@ -63,10 +63,15 @@ function test4(universe::Universe)
     Dump(universe, filename, "a")
 end
 
+function test5(universe::Universe)
+    InputDislocationLoop(universe, 100, Vector{Float64}([150,150,150]), UInt8(2))
+    Dump(universe, filename, "a")
+end
+
 
 mapSize = Vector{UInt32}([300,300,300])
 universe = Universe(mapSize)
-fileName = "/mnt/c/Users/xuke/Desktop/test3.dump"
+fileName = "/mnt/c/Users/buaax/Desktop/test3.dump"
 RefreshFile(fileName)
 
 test3(universe)
