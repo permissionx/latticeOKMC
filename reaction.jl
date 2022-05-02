@@ -4,35 +4,35 @@ using Random
 using Distributions
 
 
-const SIA_DIRECTIONS = ([Vector{Int32}([1,1,1]), 
-                         Vector{Int32}([1,1,-1]), 
-                         Vector{Int32}([1,-1,1]), 
-                         Vector{Int32}([1,-1,-1])])
+const SIA_DIRECTIONS = ([Int32[1,1,1], 
+                         Int32[1,1,-1], 
+                         Int32[1,-1,1], 
+                         Int32[1,-1,-1]])
 
 
-const DISPLACE_DIRECTIONS = ([Vector{Int32}([1,1,1]), 
-                              Vector{Int32}([1,1,-1]), 
-                              Vector{Int32}([1,-1,1]), 
-                              Vector{Int32}([1,-1,-1]),
-                              Vector{Int32}([-1,1,1]), 
-                              Vector{Int32}([-1,1,-1]), 
-                              Vector{Int32}([-1,-1,1]), 
-                              Vector{Int32}([-1,-1,-1])])
+const DISPLACE_DIRECTIONS = ([Int32[1,1,1], 
+                              Int32[1,1,-1], 
+                              Int32[1,-1,1], 
+                              Int32[1,-1,-1],
+                              Int32[-1,1,1], 
+                              Int32[-1,1,-1], 
+                              Int32[-1,-1,1], 
+                              Int32[-1,-1,-1]])
 
-const NEIGHBOR_VECTORS = ([Vector{Int32}([2,0,0]), 
-                           Vector{Int32}([-2,0,0]), 
-                           Vector{Int32}([0,2,0]), 
-                           Vector{Int32}([0,-2,0]), 
-                           Vector{Int32}([0,0,2]), 
-                           Vector{Int32}([0,0,-2]),
-                           Vector{Int32}([1,1,1]), 
-                           Vector{Int32}([1,1,-1]), 
-                           Vector{Int32}([1,-1,1]), 
-                           Vector{Int32}([1,-1,-1]),
-                           Vector{Int32}([-1,1,1]), 
-                           Vector{Int32}([-1,1,-1]), 
-                           Vector{Int32}([-1,-1,1]), 
-                           Vector{Int32}([-1,-1,-1])])
+const NEIGHBOR_VECTORS = ([Int32[2,0,0], 
+                           Int32[-2,0,0], 
+                           Int32[0,2,0], 
+                           Int32[0,-2,0], 
+                           Int32[0,0,2], 
+                           Int32[0,0,-2],
+                           Int32[1,1,1], 
+                           Int32[1,1,-1], 
+                           Int32[1,-1,1], 
+                           Int32[1,-1,-1],
+                           Int32[-1,1,1], 
+                           Int32[-1,1,-1], 
+                           Int32[-1,-1,1], 
+                           Int32[-1,-1,-1]])
 
 const DEFECT_TYPE_NAMES = ["SIA", "Vac"]
 
@@ -50,6 +50,14 @@ mutable struct Object
     type::UInt8
     directionIndex::UInt8
     pointIndexes::Vector{UInt32}
+    isRefreshed::Bool
+    function Object(index::UInt32, type::UInt8, directionIndex::UInt8, pointIndexes::Vector{UInt32})
+        index = index
+        type = type
+        directionIndex = directionIndex
+        pointIndexes = pointIndexes
+        new(index, type, directionIndex, pointIndexes, false)
+    end
 end
 
 
@@ -99,15 +107,15 @@ mutable struct Universe
     map::Array{UInt32,3}
     mapSize::Vector{UInt32}
     nStep::Int64
-    refreshObjects::Vector{Object}
+    objectsToRefresh::Vector{Object}
     function Universe(mapSize::Vector{UInt32})
         mapSize = Vector{UInt32}(mapSize)
         points = Point[]
         defects = Defect[]
         objects = Object[]
-        refreshObjects = Object[]
+        objectsToRefresh = Object[]
         map = zeros(UInt32, mapSize[1], mapSize[2], mapSize[3])
-        new(points, UInt32(0), defects, UInt32(0), objects, UInt32(0), map, mapSize, 0, refreshObjects)
+        new(points, UInt32(0), defects, UInt32(0), objects, UInt32(0), map, mapSize, 0, objectsToRefresh)
     end
 end
 
@@ -196,7 +204,6 @@ end
 
 function Base.push!(universe::Universe, points::Vector{Point}, type::UInt8, directionIndex::UInt8)
     alivePoints = Point[]
-    universe.refreshObjects = Object[]
     for point in points
         isDeleted = OccupyInPushAndDisplace!(universe, point ,type)
         if !isDeleted
@@ -217,15 +224,13 @@ function Base.push!(universe::Universe, points::Vector{Point}, type::UInt8, dire
         end
         ReactInPushAndDisplace!(universe, points)
     end
-    RefreshObjects(universe)
 end
 
-function RefreshObjects(universe::Universe)
-end
+
 
 function PushRefreshList!(universe::Universe, object::Object)
-    if !(object in universe.refreshObjects)
-        push!(universe.refreshObjects, object)
+    if !(object in universe.objectsToRefresh)
+        push!(universe.objectsToRefresh, object)
     end
 end
 
@@ -287,7 +292,7 @@ function NeighborInPush!(universe::Universe, point::Point)
             neighbor = universe.points[neighborIndex]
             push!(point.neighbors, neighbor)
             push!(neighbor.neighbors, point)
-            PushRefreshList!(universe, neighbor)
+            PushRefreshList!(universe, neighbor.object)
         end
     end
 end
@@ -400,8 +405,8 @@ end
 
 function Base.delete!(universe::Universe, object::Object)
     deleteat!(universe.objects, findfirst(x -> x === object, universe.objects))
-    if object in universe.refreshObjects
-        deleteat!(universe.refreshObjects, findfirst(x -> x === object, universe.refreshObjects))
+    if object in universe.objectsToRefresh
+        deleteat!(universe.objectsToRefresh, findfirst(x -> x === object, universe.objectsToRefresh))
     end
 end
 
@@ -456,6 +461,7 @@ function DefectAndObjectInDelete!(universe::Universe, point::Point)
         deleteat!(defect.pointIndexes, findfirst(x -> x === point.index, defect.pointIndexes))
         if point.type === UInt8(1)
             object.pointIndexes = defect.pointIndexes
+            PushRefreshList!(universe, object)
         else
             delete!(universe, object)
         end
@@ -478,6 +484,7 @@ function displace!(universe::Universe, points::Vector{Point}, newCoords::Matrix{
         if !isDeleted
             MapInPushAndDisplace!(universe, point)
             NeighborInDisplace!(universe, point)
+            PushRefreshList!(universe, point.object)
             push!(alivePoints, point)
         else
             delete!(universe, point)
@@ -505,6 +512,7 @@ end
 function NeighborInDisplace!(universe::Universe, point::Point)
     for neighbor in point.neighbors
         deleteat!(neighbor.neighbors, findfirst(x -> x === point, neighbor.neighbors))
+        PushRefreshList!(universe, neighbor.object)
     end
     point.neighbors = Point[]
     for neighborVector in NEIGHBOR_VECTORS
@@ -514,6 +522,7 @@ function NeighborInDisplace!(universe::Universe, point::Point)
         if neighborIndex > 0
             neighbor = universe.points[neighborIndex]
             push!(point.neighbors, neighbor)
+            PushRefreshList!(universe, neighbor.object)
             push!(neighbor.neighbors, point)
         end
     end

@@ -8,6 +8,17 @@ using .Geometry
 include("reaction.jl")
 include("KMC.jl")
 
+function InputDislocationLoop(universe::Universe, pointNum::Int64, centerCoord::Vector{Float64}, directionIndex::UInt8)
+    coords = HexPoints(pointNum, centerCoord, SIA_DIRECTIONS[directionIndex])
+    points = Vector{Point}(undef, pointNum)
+    for i in 1:size(coords)[1]
+        points[i] = Point(coords[i,:])
+    end
+    push!(universe, points, UInt8(1), directionIndex)
+end
+
+
+
 function test1(universe::Universe)
     point1 = Point(Vector{Int32}([11,11,11]))
     point2 = Point(Vector{Int32}([12,12,12]))
@@ -68,10 +79,29 @@ function test5(universe::Universe)
     Dump(universe, filename, "a")
 end
 
+function test6(universe::Universe)
+    for i in 1:10000
+        universe.nStep += 1
+        println("step: ", universe.nStep)
+        coord = rand(Normal(150, 20), 1)
+        coord = Geometry.CoordInBCC(coord)
+        PBCCoord!(universe, coord)
+        point = Point(coord)
+        type = sample(UInt8(1):UInt8(2))
+        direction = sample(UInt8(1):UInt8(4))
+        push!(universe, [point], type, direction)
+        if universe.nStep % 100 == 0
+            Dump(universe, fileName, "a")
+        end
+    end
+    RefreshObjects!(universe)
+    universe
+end
+
 
 mapSize = Vector{UInt32}([300,300,300])
 universe = Universe(mapSize)
-fileName = "/mnt/c/Users/buaax/Desktop/test3.dump"
+fileName = "/mnt/c/Users/buaax/Desktop/test6.dump"
 RefreshFile(fileName)
 
-test3(universe)
+test6(universe)

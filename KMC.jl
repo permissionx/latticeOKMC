@@ -1,9 +1,22 @@
-function InputDislocationLoop(universe::Universe, pointNum::Int64, centerCoord::Vector{Float64}, directionIndex::UInt8)
-    coords = HexPoints(pointNum, centerCoord, SIA_DIRECTIONS[directionIndex])
-    points = Vector{Point}(undef, pointNum)
-    for i in 1:size(coords)[1]
-        points[i] = Point(coords[i,:])
+function RefreshObjects!(universe::Universe)
+    for object in universe.objectsToRefresh
+        Refresh!(object)
     end
-    push!(universe, points, UInt8(1), directionIndex)
+    universe.refreshObjects = Object[]
 end
 
+function Refresh!(object::Object)
+    object.isRefreshed = true
+    if object.type === UInt8(2)
+        RefreshVac!(object)
+    else
+        RefreshSIA!(object)
+    end
+end
+
+function RefreshVac!(object::Object)
+    vac = universe.points[object.pointIndexes[1]]
+end
+
+function VacNeighborToProbability!(neighbors::Point[])
+    
