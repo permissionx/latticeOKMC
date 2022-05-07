@@ -351,7 +351,7 @@ function displace!(universe::Universe, points::Vector{Point}, newCoords::Matrix{
         end
         @goto start
         @label delete
-        if rand(Uniform(0,1)) < 0.000001
+        if rand(Uniform(0,1)) < BIAS_RATE
             for point in points
                 delete!(universe, point)
             end

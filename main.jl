@@ -155,6 +155,7 @@ end
 
 Random.seed!(1234)
 const mapSize = Vector{Int32}([150,150,150])
+const BIAS_RATE = 0.0001
 universe = Universe(mapSize)
 dumpName = "/mnt/c/Users/xuke/Desktop/run.dump"
 RefreshFile(dumpName)
