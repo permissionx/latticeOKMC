@@ -13,7 +13,7 @@ mutable struct Point
     end
 end
 
-const pointTypeNames = ["SIA", "Vac"]
+const pointTypeNames = ["Sia", "Vac"]
 function Base.show(io::IO, point::Point)
     print(io, "$(pointTypeNames[point.type]) ($(point.coord[1]) $(point.coord[2]))")
 end

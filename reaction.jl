@@ -1,144 +1,3 @@
-using .Geometry
-using StatsBase
-using Random
-using Distributions
-
-
-const SIA_DIRECTIONS = ([Int32[1,1,1], 
-                         Int32[1,1,-1], 
-                         Int32[1,-1,1], 
-                         Int32[1,-1,-1]])
-
-
-const DISPLACE_DIRECTIONS = ([Int32[1,1,1], 
-                              Int32[1,1,-1], 
-                              Int32[1,-1,1], 
-                              Int32[1,-1,-1],
-                              Int32[-1,1,1], 
-                              Int32[-1,1,-1], 
-                              Int32[-1,-1,1], 
-                              Int32[-1,-1,-1]])
-
-const NEIGHBOR_VECTORS = ([Int32[2,0,0], 
-                           Int32[-2,0,0], 
-                           Int32[0,2,0], 
-                           Int32[0,-2,0], 
-                           Int32[0,0,2], 
-                           Int32[0,0,-2],
-                           Int32[1,1,1], 
-                           Int32[1,1,-1], 
-                           Int32[1,-1,1], 
-                           Int32[1,-1,-1],
-                           Int32[-1,1,1], 
-                           Int32[-1,1,-1], 
-                           Int32[-1,-1,1], 
-                           Int32[-1,-1,-1]])
-
-const DEFECT_TYPE_NAMES = ["SIA", "Vac"]
-
-
-mutable struct Defect
-    index::UInt32    # name 
-    type::UInt8
-    directionIndex::UInt8
-    pointIndexes::Vector{UInt32}
-end
-
-
-mutable struct Object
-    index::UInt32
-    type::UInt8
-    directionIndex::UInt8
-    pointIndexes::Vector{UInt32}
-    isRefreshed::Bool
-    function Object(index::UInt32, type::UInt8, directionIndex::UInt8, pointIndexes::Vector{UInt32})
-        index = index
-        type = type
-        directionIndex = directionIndex
-        pointIndexes = pointIndexes
-        new(index, type, directionIndex, pointIndexes, false)
-    end
-end
-
-
-mutable struct Point
-    index::UInt32   # name and index (index nerver changed)
-    coord::Vector{Int32}
-    defect::Defect
-    object::Object
-    neighbors::Vector{Point}
-    type::UInt8
-    debug_alive::Bool
-    function Point(coord)
-        pointIndexes = UInt32[]
-        defect = Defect(UInt32(0), UInt8(0), UInt8(0), pointIndexes)
-        object = Object(UInt32(0), UInt8(0), UInt8(0), pointIndexes)
-        neighbors = Vector{Point}[]
-        new(0, coord, defect, object, neighbors, UInt8(0), true)
-    end
-end
-
-
-
-function Base.display(point::Point)
-    print("$(point.index) $(DEFECT_TYPE_NAMES[point.type]) $(point.defect.index) $(point.object.index) \
-          ($(point.coord[1]) $(point.coord[2]) $(point.coord[3]))")
-    println()
-end
-
-
-function Base.display(points::Vector{Point})
-    println("$(length(points))-point array:")
-    println("id type defect object (x y z)")  # id is index
-    for point in points
-        display(point)
-    end
-    println()
-end
-
-
-mutable struct Universe
-    points::Vector{Point}
-    pointNum::UInt32
-    defects::Vector{Defect}
-    maxDefectIndex::UInt32
-    objects::Vector{Object}
-    maxObjectIndex::UInt32
-    map::Array{UInt32,3}
-    mapSize::Vector{UInt32}
-    nStep::Int64
-    objectsToRefresh::Vector{Object}
-    function Universe(mapSize::Vector{UInt32})
-        mapSize = Vector{UInt32}(mapSize)
-        points = Point[]
-        defects = Defect[]
-        objects = Object[]
-        objectsToRefresh = Object[]
-        map = zeros(UInt32, mapSize[1], mapSize[2], mapSize[3])
-        new(points, UInt32(0), defects, UInt32(0), objects, UInt32(0), map, mapSize, 0, objectsToRefresh)
-    end
-end
-
-
-function Base.display(universe::Universe, defect::Defect)
-    direction = SIA_DIRECTIONS[defect.directionIndex]
-    print("id: $(defect.index)  type: $(DEFECT_TYPE_NAMES[defect.type]) ")
-    if defect.type === UInt8(1)
-        println("direction: ($(direction[1]) $(direction[2]) $(direction[3]))")
-    else
-        println()
-    end
-    display(universe.points[defect.pointIndexes])
-end
-
-
-function Base.display(universe::Universe)
-    for defect in universe.defects
-        display(universe, defect)
-    end
-end
-
-
 function AlivePoints(universe::Universe)
     alivePoints = Point[]
     for defect in universe.defects
@@ -220,7 +79,7 @@ function Base.push!(universe::Universe, points::Vector{Point}, type::UInt8, dire
     if length(points) > 0
         defect = DefectInPush!(universe, points, type, directionIndex)
         if type === UInt8(1)
-            ObjectInPushSIA(universe, points, defect)
+            ObjectInPushSia(universe, points, defect)
         end
         ReactInPushAndDisplace!(universe, points)
     end
@@ -245,8 +104,8 @@ function OccupyInPushAndDisplace!(universe::Universe, point::Point, type::UInt8)
         if occupiedPoint.type != type # for vac to sia
             delete!(universe, occupiedPoint)
             return true
-            # If SIA ocuupied by SIA/SIA cluster, it must be a neighbor, and thus it is goning to be merged. 
-        else  # for vac to vac & SIA to SIA
+            # If Sia ocuupied by Sia/Sia cluster, it must be a neighbor, and thus it is goning to be merged. 
+        else  # for vac to vac & Sia to Sia
             x0 = sample(Int32[1, -1])
             y0 = sample(Int32[1, -1])
             z0 = sample(Int32[1, -1])
@@ -321,7 +180,7 @@ function ObjectInPushVac(universe::Universe, point::Point)
     PushRefreshList!(universe, object)
 end
 
-function ObjectInPushSIA(universe::Universe, points::Vector{Point}, defect::Defect)
+function ObjectInPushSia(universe::Universe, points::Vector{Point}, defect::Defect)
     universe.maxObjectIndex += 1
     index = universe.maxObjectIndex
     object = Object(index, UInt8(1), defect.directionIndex, defect.pointIndexes)
@@ -413,12 +272,21 @@ end
 
 function Arrange!(universe::Universe, defect::Defect)
     aveCoord = Vector{Int64}([0,0,0])
+    coord1 = universe.points[defect.pointIndexes[1]].coord
     for pointIndex in defect.pointIndexes
         point = universe.points[pointIndex]
-        aveCoord += point.coord
+        coord = copy(point.coord)
+        for i in 1:3
+            if coord[i] - coord1[i] > mapSize[i] / 2
+                coord[i] -= mapSize[i]
+            elseif coord[i] - coord1[i] < -mapSize[i] / 2
+                coord[i] += mapSize[i]
+            end
+        end
+        aveCoord += coord
     end
     aveCoord = aveCoord / length(defect.pointIndexes)
-    coords = HexPoints(length(defect.pointIndexes), aveCoord, SIA_DIRECTIONS[defect.directionIndex])
+    coords = HexPoints(length(defect.pointIndexes), aveCoord, Sia_DIRECTIONS[defect.directionIndex])
     points = [universe.points[pointIndex] for pointIndex in defect.pointIndexes]
     displace!(universe, points, coords)
 end
@@ -474,6 +342,22 @@ end
 
 
 function displace!(universe::Universe, points::Vector{Point}, newCoords::Matrix{Int32}) 
+    if points[1].type === UInt8(1)
+        for c in newCoords
+            if c <=0 || c > universe.mapSize[1] || c > universe.mapSize[2] || c > universe.mapSize[3]
+                @goto delete
+            end
+        end
+        @goto start
+        @label delete
+        if rand(Uniform(0,1)) < 0.2
+            for point in points
+                delete!(universe, point)
+            end
+            return
+        end
+    end
+    @label start
     CleanMapInDisplace!(universe, points)
     PBCCoord!(universe, newCoords)
     alivePoints = Point[]  
