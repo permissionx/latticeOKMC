@@ -45,7 +45,7 @@ function RefreshSia!(object::Object)
     nSia = length(object.pointIndexes)
     path = Sia_DIRECTIONS[object.directionIndex]
     paths = [path, -path]
-    p = 1/nSia^0.2
+    p = 1
     probabilities = [p, p]
     totalProbability = p*2
     object.siaMigrationCondition.paths = paths

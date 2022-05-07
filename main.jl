@@ -29,12 +29,12 @@ function test1(universe::Universe)
     #Base.push!(universe::Universe, points::Vector{Point}, type::UInt8, directionIndex::UInt8)
     push!(universe, [point1, point2, point3, point4, point5], UInt8(2), UInt8(1))
     universe.nStep += 1
-    Dump(universe, fileName, "a")
+    Dump(universe, dumpName, "a")
     universe.nStep += 1
-    Dump(universe, fileName, "a")    
+    Dump(universe, dumpName, "a")    
     point6 = Point(Vector{Int32}([13,13,13]))
     push!(universe, [point6], UInt8(2), UInt8(1))
-    Dump(universe, fileName, "a")
+    Dump(universe, dumpName, "a")
     universe
 end
 
@@ -46,7 +46,7 @@ function test2(universe::Universe)
         point = Point(Vector{Int32}([150,150,150]))
         push!(universe, [point], UInt8(2), UInt8(1))
         if universe.nStep % 1 == 0
-            Dump(universe, fileName, "a")
+            Dump(universe, dumpName, "a")
         end
     end
     universe
@@ -65,19 +65,19 @@ function test3(universe::Universe)
         direction = sample(UInt8(1):UInt8(4))
         push!(universe, [point], type, direction)
         if universe.nStep % 100 == 0
-            Dump(universe, fileName, "a")
+            Dump(universe, dumpName, "a")
         end
     end
 end
 
 function test4(universe::Universe)
     InputDislocationLoop(universe, 100, Vector{Float64}([150,150,150]), UInt8(2))
-    Dump(universe, filename, "a")
+    Dump(universe, dumpName, "a")
 end
 
 function test5(universe::Universe)
     InputDislocationLoop(universe, 100, Vector{Float64}([150,150,150]), UInt8(2))
-    Dump(universe, filename, "a")
+    Dump(universe, dumpName, "a")
 end
 
 function test6(universe::Universe)
@@ -92,7 +92,7 @@ function test6(universe::Universe)
         direction = sample(UInt8(1):UInt8(4))
         push!(universe, [point], type, direction)
         if universe.nStep % 100 == 0
-            Dump(universe, fileName, "a")
+            Dump(universe, dumpName, "a")
         end
     end
     RefreshObjects!(universe)
@@ -111,13 +111,13 @@ function test7(universe::Universe)
         push!(universe, [point], type, direction)
     end
     RefreshObjects!(universe)
-    Dump(universe, fileName, "a")
+    Dump(universe, dumpName, "a")
 end
 
 function run!(universe::Universe)
     Initialization!(universe)
-    while universe.nStep < 10000000
-        if universe.nStep % 100 == 0 
+    while universe.nStep < 1000000000
+        if universe.nStep % 1000 == 0 
             coord = rand(Uniform(1,150), 3)
             coord = Geometry.CoordInBCC(coord)
             PBCCoord!(universe, coord)
@@ -128,9 +128,26 @@ function run!(universe::Universe)
         end
         universe.nStep += 1
         IterStep!(universe)
-        if universe.nStep % 10000 == 0
+        if universe.nStep % 1000000 == 0
             println("step: ", universe.nStep)
-            Dump(universe, fileName, "a")
+            defects = universe.defects
+            nSia = 0
+            nVac = 0
+            for defect in defects
+                nPoints = length(defect.pointIndexes)
+                if defect.type == UInt8(1)
+                    nSia += nPoints
+                else
+                    nVac += nPoints
+                end
+            end
+            println("SIA number: ", nSia)
+            println("Vacancy number: ", nVac)
+            println("----------------------------")
+            Dump(universe, dumpName, "a")
+            f = open(logName, "a")
+            write(f, "$(universe.nStep),$(nSia),$(nVac)\n")
+            close(f)
         end
     end
 end
@@ -139,7 +156,12 @@ end
 Random.seed!(1234)
 const mapSize = Vector{Int32}([150,150,150])
 universe = Universe(mapSize)
-fileName = "/mnt/c/Users/xuke/Desktop/test7.dump"
-RefreshFile(fileName)
+dumpName = "/mnt/c/Users/xuke/Desktop/run.dump"
+RefreshFile(dumpName)
+logName = "/mnt/c/Users/xuke/Desktop/run.log"
+RefreshFile(logName)
+f = open(logName, "a")
+write(f, "step,nSIA,nVac\n")
+close(f)
 #test7(universe::Universe)
 run!(universe)

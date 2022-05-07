@@ -170,6 +170,7 @@ function DefectInPush!(universe::Universe, points::Vector{Point}, type::UInt8, d
     defect
 end
 
+
 function ObjectInPushVac(universe::Universe, point::Point)
     universe.maxObjectIndex += 1
     index = universe.maxObjectIndex
@@ -179,6 +180,7 @@ function ObjectInPushVac(universe::Universe, point::Point)
     push!(universe.objects, object)
     PushRefreshList!(universe, object)
 end
+
 
 function ObjectInPushSia(universe::Universe, points::Vector{Point}, defect::Defect)
     universe.maxObjectIndex += 1
@@ -340,7 +342,6 @@ function DefectAndObjectInDelete!(universe::Universe, point::Point)
 end
 
 
-
 function displace!(universe::Universe, points::Vector{Point}, newCoords::Matrix{Int32}) 
     if points[1].type === UInt8(1)
         for c in newCoords
@@ -350,7 +351,7 @@ function displace!(universe::Universe, points::Vector{Point}, newCoords::Matrix{
         end
         @goto start
         @label delete
-        if rand(Uniform(0,1)) < 0.2
+        if rand(Uniform(0,1)) < 0.000001
             for point in points
                 delete!(universe, point)
             end
@@ -411,5 +412,4 @@ function NeighborInDisplace!(universe::Universe, point::Point)
         end
     end
 end
-
 
